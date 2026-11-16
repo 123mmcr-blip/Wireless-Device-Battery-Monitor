@@ -1,4 +1,5 @@
-// Kysona, Pulsar and ATK / VXE wireless mice (VID 3554, ATK dongles 373B). They share one protocol:
+// Kysona, Pulsar and ATK / VXE wireless mice (VID 3554, ATK dongles 373B) and the original Hitscan
+// Hyperlight (VID 3770, verified on the 1K receiver 3770:0200). They share one protocol:
 // 17-byte output/input report id 08: [08][cmd][0 x14][checksum], checksum = 0x55 - sum(bytes 0..15).
 //   cmd 03 = online status -> reply [6] = 1 when the mouse is connected to the dongle
 //   cmd 04 = battery       -> reply [6] = percent, [7] = charging, [8..9] = millivolts
@@ -34,6 +35,7 @@ std::wstring CleanName(std::wstring n, USHORT vid) {
         size_t l = wcslen(suffix);
         if (n.size() > l && n.compare(n.size() - l, l, suffix) == 0) n = n.substr(0, n.size() - l);
     }
+    if (vid == 0x3770) return L"Hitscan Hyperlight";  // the receiver only calls itself "Hitscan USB Receiver"
     if (n.empty()) n = vid == 0x373B ? L"ATK wireless mouse" : L"Wireless mouse";
     return n;
 }
@@ -42,7 +44,7 @@ std::wstring CleanName(std::wstring n, USHORT vid) {
 
 void PollKysona(PollContext& ctx) {
     std::vector<std::wstring> seenNames;
-    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B }) {
+    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B, (USHORT)0x3770 }) {
         for (auto [vid, pid] : ctx.Products(vendor)) {
             for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) { return c.outLen() == 17 && c.inLen() == 17; })) {
                 HidDev d;

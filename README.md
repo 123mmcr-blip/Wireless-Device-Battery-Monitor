@@ -35,7 +35,7 @@ Hover for details. Click for the menu: every device, display mode, *Refresh now*
 | **HyperX** | Cloud III Wireless, Cloud II Wireless (HP and Kingston), Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | Vendor HID reports |
 | **Glorious** | Model O / O- / D / D- Wireless, Model O 2 / D 2 PRO | Vendor feature report |
 | **Hitscan** | Hyperlight X, Hyperlight N | Vendor feature report (same protocol as Glorious) |
-| **Kysona / Pulsar / ATK (VXE)** | Kysona M600 / Mercury, Pulsar and ATK VXE wireless mice | Shared vendor protocol with checksummed replies |
+| **Kysona / Pulsar / ATK (VXE) / Hitscan** | Kysona M600 / Mercury, Pulsar and ATK VXE wireless mice, Hitscan Hyperlight | Shared vendor protocol with checksummed replies |
 | **Sony** | DualShock 4, DualSense, DualSense Edge (USB, Bluetooth, wireless adapter) | Input report |
 | **Xbox** | Controllers and headsets on the Xbox Wireless adapter or USB | XInput (coarse levels: Low / Medium / Full) |
 | **Bluetooth** | Anything that shows a battery in *Settings → Bluetooth & devices* (earbuds, headphones, BLE mice and keyboards) | Windows device property |
