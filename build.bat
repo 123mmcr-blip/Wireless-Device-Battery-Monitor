@@ -7,7 +7,7 @@ windres -i res\app.rc -o build\app_res.o --include-dir res || exit /b 1
 g++ -std=c++17 -Os -municode -mwindows -static -s -ffunction-sections -fdata-sections -Wl,--gc-sections ^
     -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Wall -Wno-missing-field-initializers ^
     src\main.cpp src\devices.cpp src\widget.cpp src\hid.cpp ^
-    src\drivers\glorious.cpp src\drivers\kysona.cpp src\drivers\atk_serial.cpp src\drivers\hyperx.cpp src\drivers\logitech.cpp src\drivers\razer.cpp ^
+    src\drivers\glorious.cpp src\drivers\kysona.cpp src\drivers\atk_serial.cpp src\drivers\keychron.cpp src\drivers\hyperx.cpp src\drivers\logitech.cpp src\drivers\razer.cpp ^
     src\drivers\steelseries.cpp src\drivers\corsair.cpp src\drivers\playstation.cpp src\drivers\xinput.cpp ^
     src\drivers\generic.cpp src\drivers\headsetcontrol.cpp ^
     build\app_res.o -o WirelessBattery.exe ^

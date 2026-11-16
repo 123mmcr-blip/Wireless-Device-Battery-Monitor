@@ -37,9 +37,14 @@ struct PollContext {
     }
 };
 
+// G-Wolves model names (shared by the Glorious- and Kysona-protocol drivers).
+const wchar_t* GWolvesModelName(USHORT pid);
+bool GWolvesIsCable(USHORT pid);
+
 // Vendor drivers (run in this order).
 void PollGlorious(PollContext& ctx);  // also Hitscan
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro headset (virtual COM port)
+void PollKeychron(PollContext& ctx);  // Keychron mice
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
 void PollHyperX(PollContext& ctx);
 void PollLogitech(PollContext& ctx);

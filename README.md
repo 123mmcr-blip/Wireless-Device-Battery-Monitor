@@ -37,6 +37,8 @@ Hover for details. Click for the menu: every device, display mode, *Refresh now*
 | **Hitscan** | Hyperlight X, Hyperlight N | Vendor feature report (same protocol as Glorious) |
 | **Kysona / Pulsar / ATK (VXE) / Hitscan** | Kysona M600 / Mercury, Pulsar and ATK VXE wireless mice (e.g. VXE X3 Pro, ATK F1 Extreme), Hitscan Hyperlight | Shared vendor protocol with checksummed replies |
 | **ATK headsets** | ATK N9 Pro | Virtual COM port protocol (the ATK desktop app must be closed) |
+| **G-Wolves** | Fenrir, Fenrir Pro / Max / Asym, HTX, HTS, HSK, HTR, HT-S2, Lycan, WARG, VUK and their 8K dongles | Glorious or Kysona protocol, depending on the model |
+| **Keychron mice** | M4 and other Keychron mice on the 2.4 GHz receiver | Vendor report from Keychron Launcher |
 | **Sony** | DualShock 4, DualSense, DualSense Edge (USB, Bluetooth, wireless adapter) | Input report |
 | **Xbox** | Controllers and headsets on the Xbox Wireless adapter or USB | XInput (coarse levels: Low / Medium / Full) |
 | **Bluetooth** | Anything that shows a battery in *Settings → Bluetooth & devices* (earbuds, headphones, BLE mice and keyboards) | Windows device property |
@@ -93,7 +95,9 @@ just lose the extra headsets.
 - **Primary monitor only:** the taskbar widget sits on the primary monitor's taskbar.
 - **Crowded taskbars:** with a very full centered Windows 11 taskbar, the app buttons can reach the widget. On Windows 10 the task-button area is narrowed automatically.
 - **Sleeping devices:** a device that is asleep may not answer. Its last value stays visible, dimmed. Logitech receivers drop sleeping devices from the link, so their last value is kept for 30 minutes.
-- **Keychron:** keyboards only report their battery over Bluetooth (shown via the Bluetooth support). Over the 2.4 GHz receiver the firmware does not expose it.
+- **Keychron keyboards:** they only report their battery over Bluetooth (shown via the Bluetooth support). Over the 2.4 GHz receiver the firmware does not expose it. Keychron mice are supported.
+- **Zowie (e.g. EC2-CW):** these mice are driverless and only show battery on their own LEDs; the receiver does not report it to the PC.
+- **Razer BlackShark V3 Pro:** its battery protocol is not documented yet. Connected over Bluetooth, Windows reports it and it shows up.
 - **Unknown protocols:** some 2.4 GHz devices use undocumented protocols and are not supported yet. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to help add one.
 
 ## How it works
@@ -114,6 +118,8 @@ The protocols come from these projects' research:
 - Hitscan's web configurator ([control.hitscan.com](https://control.hitscan.com)): Hitscan
 - Linux `hid-kysona` (Lode Willems): Kysona, Pulsar and ATK
 - ATK's web configurator ([hub.atk.pro](https://hub.atk.pro)): ATK mice and the N9 Pro headset
+- G-Wolves' web driver ([mouse.xyz](https://mouse.xyz)): G-Wolves models and their protocols
+- Keychron Launcher ([launcher.keychron.com](https://launcher.keychron.com)): Keychron mice
 - [HyperXWM](https://github.com/Medprj/HyperXWM): HyperX Cloud III Wireless
 - Linux `hid-playstation`: DualShock 4 / DualSense report layout
 

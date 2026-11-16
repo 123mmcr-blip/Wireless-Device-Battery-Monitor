@@ -1,10 +1,57 @@
-// Glorious (VID 258A) and Hitscan (VID 3770) wireless mice. Both use the same supplier protocol:
+// Glorious (VID 258A), Hitscan (VID 3770) and G-Wolves (VID 33E4) wireless mice using the same
+// supplier protocol (G-Wolves calls it "XVI"; its other models use the Kysona protocol instead):
 // Request: 64-byte feature report (id 0), bytes [3]=02 [4]=02 [6]=83.
 // Reply:   [1]=status, [4]=02, [6]=83, [7]=charging (1), [8]=percent.
 // Status A1 = awake, A4 = asleep, A0 = waking up, others = unreachable.
 // Protocol: github.com/ikajdan/glorious-indicator, github.com/louis4craft/glorious-ctl,
-// and Hitscan's own web configurator (control.hitscan.com, getBatPer).
+// Hitscan's web configurator (control.hitscan.com) and G-Wolves' (mouse.xyz, Config/env-models.json).
 #include "drivers.h"
+
+// Model names and cable product ids from G-Wolves' own device list (mouse.xyz/Config/env-models.json).
+// 33E4:3854 is a dongle shared by many models, so it has no specific name.
+const wchar_t* GWolvesModelName(USHORT pid) {
+    switch (pid) {
+        case 0x3808: case 0x3817: return L"G-Wolves HTM Plus";
+        case 0x6808: case 0x6817: return L"G-Wolves HSK Pro 2.0";
+        case 0x5608: case 0x5617: case 0x5618: case 0x5619: return L"G-Wolves HTXU";
+        case 0x3608: case 0x3617: case 0x3619: return L"G-Wolves Fenrir Pro";
+        case 0x3908: case 0x3917: return L"G-Wolves VUK";
+        case 0x7904: case 0x7913: return L"G-Wolves HT-S2";
+        case 0x3708: case 0x3717: return L"G-Wolves Fenrir Max";
+        case 0x5308: case 0x5317: return L"G-Wolves HTS Ultra";
+        case 0x7704: case 0x7713: return L"G-Wolves HTR";
+        case 0x3508: case 0x3517: return L"G-Wolves Fenrir";
+        case 0x7908: case 0x7917: return L"G-Wolves HT-S2 Pro";
+        case 0x5808: case 0x5817: return L"G-Wolves HSK Pro";
+        case 0x2708: case 0x2717: case 0x2719: return L"G-Wolves HTX Mini";
+        case 0x5408: case 0x5417: case 0x5418: case 0x5419: return L"G-Wolves HTS Plus";
+        case 0x5708: case 0x5717: return L"G-Wolves HTX";
+        case 0x5908: case 0x5917: return L"G-Wolves HSK Plus";
+        case 0x7204: case 0x7203: return L"G-Wolves HSK Lite";
+        case 0x7708: case 0x7717: return L"G-Wolves HTR Pro";
+        case 0x5804: case 0x5803: return L"G-Wolves HSK Pro ACE";
+        case 0x5404: case 0x5403: return L"G-Wolves HTS Plus ACE";
+        case 0x5704: case 0x5703: return L"G-Wolves HTX ACE";
+        case 0x5904: case 0x5903: return L"G-Wolves HSK Plus ACE";
+        case 0x4718: case 0x4719: return L"G-Wolves Lycan";
+        case 0x4219: return L"G-Wolves WARG";
+        case 0x5219: return L"G-Wolves HTS Plus Pro";
+        case 0x3519: return L"G-Wolves Fenrir Asym";
+        case 0x2619: return L"G-Wolves HTX Mini Asym";
+        case 0x1619: return L"G-Wolves Fenrir Max Asym";
+        case 0x2119: return L"G-Wolves VUK Mini";
+        default: return L"G-Wolves wireless mouse";
+    }
+}
+
+bool GWolvesIsCable(USHORT pid) {
+    static const USHORT wired[] = { 0x1619, 0x2119, 0x2619, 0x2708, 0x2719, 0x3508, 0x3519, 0x3608, 0x3619, 0x3708, 0x3808, 0x3908,
+                                    0x4219, 0x4718, 0x4719, 0x5219, 0x5308, 0x5404, 0x5408, 0x5418, 0x5419, 0x5608, 0x5618, 0x5619,
+                                    0x5704, 0x5708, 0x5804, 0x5808, 0x5904, 0x5908, 0x6808, 0x7204, 0x7704, 0x7708, 0x7904, 0x7908 };
+    for (USHORT w : wired)
+        if (w == pid) return true;
+    return false;
+}
 
 namespace {
 
@@ -41,6 +88,7 @@ bool HitscanCable(USHORT pid) { return pid == 0x0136 || pid == 0x0194; }
 const Vendor kVendors[] = {
     { 0x258A, L"glorious:", 50, GloriousName, GloriousCable },
     { 0x3770, L"hitscan:", 200, HitscanName, HitscanCable },
+    { 0x33E4, L"gwolves:", 100, GWolvesModelName, GWolvesIsCable },
 };
 
 }  // namespace
