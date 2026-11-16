@@ -1,0 +1,52 @@
+#pragma once
+// Each driver looks at the enumerated HID collections, talks to the devices it recognises and
+// appends what it finds. A driver claims a device (vendor/product id) once it has handled it so
+// that the generic fallbacks further down the chain do not report it twice.
+#include <set>
+#include <utility>
+#include <vector>
+
+#include "../devices.h"
+#include "../hid.h"
+
+struct PollContext {
+    std::vector<HidColl> colls;
+    std::set<std::pair<USHORT, USHORT>> claimed;
+    std::vector<DeviceStatus> out;
+
+    bool IsClaimed(USHORT vid, USHORT pid) const { return claimed.count({ vid, pid }) != 0; }
+    void Claim(USHORT vid, USHORT pid) { claimed.insert({ vid, pid }); }
+    void Add(const DeviceStatus& s, USHORT vid, USHORT pid) {
+        out.push_back(s);
+        Claim(vid, pid);
+    }
+    // Distinct (vid, pid) pairs for a vendor that are not claimed yet.
+    std::vector<std::pair<USHORT, USHORT>> Products(USHORT vid) const {
+        std::set<std::pair<USHORT, USHORT>> s;
+        for (const auto& c : colls)
+            if (c.vid == vid && !IsClaimed(c.vid, c.pid)) s.insert({ c.vid, c.pid });
+        return { s.begin(), s.end() };
+    }
+    // Collections of one product, optionally filtered.
+    template <class Pred>
+    std::vector<const HidColl*> Find(USHORT vid, USHORT pid, Pred pred) const {
+        std::vector<const HidColl*> r;
+        for (const auto& c : colls)
+            if (c.vid == vid && c.pid == pid && pred(c)) r.push_back(&c);
+        return r;
+    }
+};
+
+// Vendor drivers (run in this order).
+void PollGlorious(PollContext& ctx);
+void PollHyperX(PollContext& ctx);
+void PollLogitech(PollContext& ctx);
+void PollRazer(PollContext& ctx);
+void PollSteelSeries(PollContext& ctx);
+void PollCorsair(PollContext& ctx);
+void PollPlayStation(PollContext& ctx);
+// Fallbacks.
+void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
+void PollGenericHid(PollContext& ctx);
+void PollBluetooth(PollContext& ctx);
+void PollXInput(PollContext& ctx);

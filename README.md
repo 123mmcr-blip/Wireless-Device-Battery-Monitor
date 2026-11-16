@@ -1,0 +1,111 @@
+# Wireless Battery
+
+Battery levels of your wireless mouse, headset, keyboard and controller, right on the Windows taskbar.
+
+![Wireless Battery on the taskbar](docs/screenshot.png)
+
+- **Tiny**: a ~350 KB app using about 2 MB of RAM. It's plain C++/Win32, with no runtime and no background service, and installs in seconds without admin rights.
+- **No vendor software needed**: it talks to the devices directly. G HUB, Synapse, iCUE, GG and NGenuity can stay closed (or keep running; they don't conflict).
+- **Many brands**: Logitech, Razer, SteelSeries, Corsair, HyperX, Glorious, PlayStation and Xbox controllers, any Bluetooth device Windows knows a battery level for, and every headset the bundled [HeadsetControl](https://github.com/Sapd/HeadsetControl) supports.
+
+## Display
+
+**On the taskbar (default):** `🎧 30%  🖱 93%` next to the notification area, drawn with the Windows icon font.
+- **Low battery:** a red number means 15% or less.
+- **Charging:** a blue ⚡ appears next to the number.
+- **Asleep:** dimmed text means the device is asleep and the last known value is shown.
+- **Theme:** it follows light/dark mode and DPI scaling.
+
+**Tray icons:** one icon per device with the number drawn in it, plus a "Low battery" notification at 15%. The app switches to this automatically when the taskbar is vertical or can't be found.
+
+Hover for details. Click for the menu: every device, display mode, *Refresh now*, *Start with Windows*, and *Exit*. Levels refresh every 60 seconds, and right away when a device is plugged in or the PC wakes up.
+
+## Supported devices
+
+| Vendor | Devices | How |
+|---|---|---|
+| **Logitech** | Mice and keyboards on Unifying, Bolt, Lightspeed and Nano receivers, over USB or Bluetooth; G headsets (G533, G535, G633/G635/G733/G933/G935, G PRO/PRO X) | HID++ 1.0 / 2.0 with feature discovery: unified battery, battery level, voltage, ADC |
+| **Razer** | Wireless mice, keyboards and dongles | Razer feature-report protocol (battery and charging) |
+| **SteelSeries** | Arctis 1/7/7+/9/Pro/Pro Wireless, Arctis Nova 3P/5/7/7X/7P/Pro Wireless, GameBuds; Aerox 3/5/9 Wireless, Prime Wireless, Rival 3 Wireless (Gen 2), Rival 650 | Vendor HID reports |
+| **Corsair** | Void / Void Pro / Void Elite / HS70 / HS80 wireless; Bragi devices (Virtuoso, Void V2, HS80 MAX, Slipstream mice and keyboards) | Vendor HID reports, Bragi `GET` (read-only) |
+| **HyperX** | Cloud III Wireless, Cloud II Wireless (HP and Kingston), Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | Vendor HID reports |
+| **Glorious** | Model O / O- / D / D- Wireless, Model O 2 / D 2 PRO | Vendor feature report |
+| **Sony** | DualShock 4, DualSense, DualSense Edge (USB, Bluetooth, wireless adapter) | Input report |
+| **Xbox** | Controllers and headsets on the Xbox Wireless adapter or USB | XInput (coarse levels: Low / Medium / Full) |
+| **Bluetooth** | Anything that shows a battery in *Settings → Bluetooth & devices* (earbuds, headphones, BLE mice and keyboards) | Windows device property |
+| **Generic HID** | Devices reporting the standard HID *Battery Strength* usage | HID usage page 0x06 / 0x85 |
+| **HeadsetControl** | [Every headset it supports](https://github.com/Sapd/HeadsetControl#supported-headsets) (Audeze, Jabra, Sony INZONE, newer Logitech and more) | Bundled; runs `headsetcontrol -o json` |
+
+**Tested on real hardware:** Glorious Model O Wireless and HyperX Cloud III Wireless.
+**Implemented from protocol documentation and other projects, not yet tested:** everything else. If you own one of these devices, please report whether it works by [opening an issue](../../issues).
+
+## Install
+
+1. Download **`WirelessBattery-Setup-x.y.z.exe`** from [Releases](../../releases).
+2. Run it and click through. It needs **no administrator rights** and **nothing else installed**: no
+   runtimes, no drivers, no vendor apps. HeadsetControl comes bundled.
+
+The installer adds a Start menu entry and an uninstaller (*Settings → Apps*), and can start the app
+when you sign in. Prefer no installer? Download `WirelessBattery-x.y.z-portable.zip`, unzip it
+anywhere and run `WirelessBattery.exe`.
+
+**Notes:**
+- **SmartScreen warning:** the exe is not code-signed, so Windows may say "Windows protected your PC". Click *More info → Run anyway*, or build it yourself.
+- **Tray-icon mode on Windows 11:** new tray icons go to the `^` overflow. Drag them onto the taskbar or enable them in *Settings → Personalization → Taskbar → Other system tray icons*.
+
+## Command line
+
+```
+WirelessBattery.exe --list   # print every device and its battery level, then exit
+WirelessBattery.exe --dump   # print every HID collection (useful when asking for a new device)
+WirelessBattery.exe --quit   # close the running instance
+```
+
+## Build
+
+You need [MinGW-w64](https://www.mingw-w64.org/), e.g. from [MSYS2](https://www.msys2.org/) (`pacman -S mingw-w64-x86_64-gcc make`).
+
+```
+make            # MSYS2 / any shell with make
+build.bat       # plain cmd with g++ and windres on PATH
+```
+
+To build the installer and portable zip, install [Inno Setup](https://jrsoftware.org/isinfo.php) and run
+`powershell -File installer\build-installer.ps1 -Version 1.0.0`. It downloads the pinned
+HeadsetControl release and verifies its checksum. GitHub Actions does all of this automatically:
+pushing a tag like `v1.0.0` publishes a release with the installer, the portable zip and the
+HeadsetControl source (as its GPL license requires).
+
+`WirelessBattery.exe` on its own also works. Without `headsetcontrol.exe` next to it (or on `PATH`) you
+just lose the extra headsets.
+
+## Limitations
+
+- **Primary monitor only:** the taskbar widget sits on the primary monitor's taskbar.
+- **Crowded taskbars:** with a very full centered Windows 11 taskbar, the app buttons can reach the widget. On Windows 10 the task-button area is narrowed automatically.
+- **Sleeping devices:** a device that is asleep may not answer. Its last value stays visible, dimmed. Logitech receivers drop sleeping devices from the link, so their last value is kept for 30 minutes.
+- **Unknown protocols:** some 2.4 GHz devices use undocumented protocols and are not supported yet. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to help add one.
+
+## How it works
+
+Each vendor driver in [`src/drivers/`](src/drivers) recognises its devices by USB vendor and product ID, and only ever sends read-only battery queries. Unknown devices are never written to. The generic fallbacks (HID battery usage, Bluetooth, XInput, HeadsetControl) only look at devices no vendor driver has claimed.
+
+The taskbar widget is a layered child window of `Shell_TrayWnd`, placed left of `TrayNotifyWnd`. If Explorer restarts, it is re-created.
+
+## Credits
+
+The protocols come from these projects' research:
+
+- [HeadsetControl](https://github.com/Sapd/HeadsetControl): SteelSeries, Corsair, HyperX and Logitech headsets
+- [OpenRazer](https://github.com/openrazer/openrazer): Razer
+- [Solaar](https://github.com/pwr-Solaar/Solaar) and the Logitech HID++ 2.0 documents: Logitech
+- [rivalcfg](https://github.com/flozz/rivalcfg): SteelSeries mice
+- [glorious-indicator](https://github.com/ikajdan/glorious-indicator) and [glorious-ctl](https://github.com/louis4craft/glorious-ctl): Glorious
+- [HyperXWM](https://github.com/Medprj/HyperXWM): HyperX Cloud III Wireless
+- Linux `hid-playstation`: DualShock 4 / DualSense report layout
+
+## License
+
+[GNU General Public License v3.0 or later](LICENSE). You may use, modify and redistribute this
+software, but anything you distribute that is based on it must be released under the same license,
+with its source code.
