@@ -1,0 +1,85 @@
+// Kysona, Pulsar and ATK / VXE wireless mice (VID 3554, ATK dongles 373B). They share one protocol:
+// 17-byte output/input report id 08: [08][cmd][0 x14][checksum], checksum = 0x55 - sum(bytes 0..15).
+//   cmd 03 = online status -> reply [6] = 1 when the mouse is connected to the dongle
+//   cmd 04 = battery       -> reply [6] = percent, [7] = charging, [8..9] = millivolts
+// Reference: Linux drivers/hid/hid-kysona.c (Lode Willems) and the hid-pulsar patch discussion.
+#include "drivers.h"
+
+namespace {
+
+BYTE Checksum(const BYTE* b) {
+    unsigned sum = 0;
+    for (int i = 0; i < 16; i++) sum += b[i];
+    return (BYTE)(0x55 - sum);
+}
+
+// Sends `cmd` and waits for its checksummed reply.
+bool Query(HidDev& d, BYTE cmd, std::vector<BYTE>& r) {
+    std::vector<BYTE> req(17, 0);
+    req[0] = 0x08;
+    req[1] = cmd;
+    req[16] = Checksum(req.data());
+    d.Flush();
+    if (!d.Write(req)) return false;
+    ULONGLONG end = GetTickCount64() + 500;
+    for (;;) {
+        int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
+        if (left <= 0 || d.Read(r, left) < 17) return false;
+        if (r[0] == 0x08 && r[1] == cmd && r[16] == Checksum(r.data())) return true;
+    }
+}
+
+std::wstring CleanName(std::wstring n, USHORT vid) {
+    for (const wchar_t* suffix : { L" Dongle", L" Receiver", L" 2.4G", L" Wireless Receiver" }) {
+        size_t l = wcslen(suffix);
+        if (n.size() > l && n.compare(n.size() - l, l, suffix) == 0) n = n.substr(0, n.size() - l);
+    }
+    if (n.empty()) n = vid == 0x373B ? L"ATK wireless mouse" : L"Wireless mouse";
+    return n;
+}
+
+}  // namespace
+
+void PollKysona(PollContext& ctx) {
+    std::vector<std::wstring> seenNames;
+    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B }) {
+        for (auto [vid, pid] : ctx.Products(vendor)) {
+            for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) { return c.outLen() == 17 && c.inLen() == 17; })) {
+                HidDev d;
+                if (!d.Open(*c)) continue;
+                std::vector<BYTE> r;
+                DeviceStatus s;
+                bool answered = false;
+                if (Query(d, 0x03, r)) {
+                    answered = true;
+                    s.connected = r[6] != 0;
+                }
+                if ((!answered || s.connected) && Query(d, 0x04, r)) {
+                    answered = true;
+                    s.connected = true;
+                    if (r[6] <= 100) s.percent = r[6];
+                    s.charging = r[7] != 0;
+                    s.millivolts = (r[8] << 8) | r[9];
+                }
+                if (!answered) continue;
+                s.key = L"kysona:" + Hex4(vid) + L":" + Hex4(pid);
+                s.name = CleanName(HidProduct(*c), vid);
+                s.kind = KindFromCollections(ctx.colls, vid, pid);
+                if (s.kind == DeviceKind::Other) s.kind = DeviceKind::Mouse;
+                s.via = L"2.4 GHz receiver";
+                // A mouse plugged in for charging can show up twice (cable + dongle); keep one.
+                bool dup = false;
+                for (auto& n : seenNames) dup |= n == s.name;
+                if (dup) {
+                    ctx.Claim(vid, pid);
+                    for (auto& o : ctx.out)
+                        if (o.name == s.name && s.charging) o.charging = true;
+                } else {
+                    seenNames.push_back(s.name);
+                    ctx.Add(s, vid, pid);
+                }
+                break;
+            }
+        }
+    }
+}

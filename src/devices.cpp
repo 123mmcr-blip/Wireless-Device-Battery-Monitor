@@ -11,6 +11,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollContext ctx;
     ctx.colls = EnumHid();
     PollGlorious(ctx);
+    PollKysona(ctx);
     PollHyperX(ctx);
     PollLogitech(ctx);
     PollRazer(ctx);

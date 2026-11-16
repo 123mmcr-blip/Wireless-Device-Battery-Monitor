@@ -38,7 +38,8 @@ struct PollContext {
 };
 
 // Vendor drivers (run in this order).
-void PollGlorious(PollContext& ctx);
+void PollGlorious(PollContext& ctx);  // also Hitscan
+void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE
 void PollHyperX(PollContext& ctx);
 void PollLogitech(PollContext& ctx);
 void PollRazer(PollContext& ctx);
