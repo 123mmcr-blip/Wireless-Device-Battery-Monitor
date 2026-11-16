@@ -60,6 +60,21 @@ begin
     Exec(ExpandConstant('{app}\WirelessBattery.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
+function InstalledRunValue(): String;
+begin
+  Result := '"' + ExpandConstant('{app}\WirelessBattery.exe') + '"';
+end;
+
+{ Removes the startup entry only if it points at this installed copy, so a portable copy's
+  "Start with Windows" setting is left alone. }
+procedure RemoveOwnAutostart();
+var
+  Value: String;
+begin
+  if RegQueryStringValue(HKCU, RunKey, 'WirelessBattery', Value) and (CompareText(Value, InstalledRunValue()) = 0) then
+    RegDeleteValue(HKCU, RunKey, 'WirelessBattery');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -68,9 +83,9 @@ begin
   begin
     { Same value the app's own "Start with Windows" menu item writes, so the two stay in sync. }
     if WizardIsTaskSelected('autostart') then
-      RegWriteStringValue(HKCU, RunKey, 'WirelessBattery', '"' + ExpandConstant('{app}\WirelessBattery.exe') + '"')
+      RegWriteStringValue(HKCU, RunKey, 'WirelessBattery', InstalledRunValue())
     else
-      RegDeleteValue(HKCU, RunKey, 'WirelessBattery');
+      RemoveOwnAutostart();
   end;
 end;
 
@@ -78,7 +93,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    RegDeleteValue(HKCU, RunKey, 'WirelessBattery');
+    RemoveOwnAutostart();
     RegDeleteKeyIncludingSubkeys(HKCU, 'Software\WirelessBattery');
   end;
 end;
