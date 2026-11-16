@@ -37,16 +37,18 @@ Hover for details. Click for the menu: every device, display mode, *Refresh now*
 | **HeadsetControl** | [Every headset it supports](https://github.com/Sapd/HeadsetControl#supported-headsets) (Audeze, Jabra, Sony INZONE, newer Logitech and more) | Bundled; runs `headsetcontrol -o json` |
 
 **Tested on real hardware:** Glorious Model O Wireless and HyperX Cloud III Wireless.
-**Implemented from protocol documentation and other projects, not yet tested:** everything else. If you own one of these devices, please report whether it works by [opening an issue](../../issues).
+**Implemented from protocol documentation and other projects, not yet tested:** everything else. If you own one of these devices, please report whether it works by [opening an issue](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/issues).
 
 ## Install
 
-1. Download **`WirelessBattery-Setup-x.y.z.exe`** from [Releases](../../releases).
+[![Latest version](https://img.shields.io/github/v/release/krisgfx9/Wireless-Device-Battery-Monitor?label=latest%20version&style=for-the-badge)](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/releases/latest)
+
+1. Download **`WirelessBattery-Setup-<version>.exe`** from the [latest release](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/releases/latest).
 2. Run it and click through. It needs **no administrator rights** and **nothing else installed**: no
    runtimes, no drivers, no vendor apps. HeadsetControl comes bundled.
 
 The installer adds a Start menu entry and an uninstaller (*Settings → Apps*), and can start the app
-when you sign in. Prefer no installer? Download `WirelessBattery-x.y.z-portable.zip`, unzip it
+when you sign in. Prefer no installer? Download `WirelessBattery-<version>-portable.zip`, unzip it
 anywhere and run `WirelessBattery.exe`.
 
 **Notes:**
