@@ -46,7 +46,12 @@ void PollKysona(PollContext& ctx) {
     std::vector<std::wstring> seenNames;
     for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B, (USHORT)0x3770 }) {
         for (auto [vid, pid] : ctx.Products(vendor)) {
-            for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) { return c.outLen() == 17 && c.inLen() == 17; })) {
+            // Kysona exposes a dedicated 17-byte collection; ATK / VXE receivers put report 08 in a
+            // vendor collection that also carries larger reports. The checksummed reply filters out
+            // anything that does not speak this protocol.
+            for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) {
+                     return (c.outLen() == 17 && c.inLen() == 17) || (c.page() >= 0xFF00 && c.outLen() >= 17 && c.inLen() >= 17);
+                 })) {
                 HidDev d;
                 if (!d.Open(*c)) continue;
                 std::vector<BYTE> r;

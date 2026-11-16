@@ -11,6 +11,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollContext ctx;
     ctx.colls = EnumHid();
     PollGlorious(ctx);
+    PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
     PollKysona(ctx);
     PollHyperX(ctx);
     PollLogitech(ctx);

@@ -147,6 +147,25 @@ bool Rival(HidDev& d, USHORT pid, DeviceStatus& s) {
     return true;
 }
 
+// Rival Pro (UWB, hot-swappable batteries): 92 -> 92 00 <mouse %> <flag> <spare battery %>.
+// From the Rival Pro support pull request on rivalcfg (github.com/flozz/rivalcfg/pull/294).
+bool RivalPro(HidDev& d, USHORT pid, DeviceStatus& s) {
+    d.Flush();
+    if (!d.Write({ 0x00, 0x92 })) return false;
+    std::vector<BYTE> r;
+    ULONGLONG end = GetTickCount64() + 500;
+    for (;;) {
+        int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
+        if (left <= 0 || d.Read(r, left) < 3) return false;
+        if (r[0] == 0x92 && r[1] == 0x00) break;
+    }
+    if (r[2] > 100) return false;
+    s = Mouse(pid, L"SteelSeries Rival Pro", false);
+    s.via = L"UWB base station";
+    s.percent = r[2];
+    return true;
+}
+
 struct Model {
     std::vector<USHORT> pids;
     bool (*accept)(const HidColl&);
@@ -156,6 +175,7 @@ struct Model {
 bool PageFF43(const HidColl& c) { return c.page() == 0xFF43 && c.usage() == 0x0202; }
 bool PageFFC0(const HidColl& c) { return c.page() == 0xFFC0 && c.usage() == 0x0001; }
 bool Iface0(const HidColl& c) { return c.iface == 0 && c.outLen() > 0; }
+bool Iface2(const HidColl& c) { return c.iface == 2 && c.outLen() > 0; }
 bool Iface3(const HidColl& c) { return c.iface == 3 && c.outLen() > 0; }
 bool Iface4(const HidColl& c) { return c.iface == 4 && c.outLen() > 0; }
 
@@ -171,6 +191,7 @@ const Model kModels[] = {
     { { 0x1838, 0x183A, 0x1852, 0x1854, 0x1858, 0x185A, 0x1840, 0x1842 }, Iface3, Aerox },
     { { 0x1830, 0x1872 }, Iface3, Rival },
     { { 0x172B }, Iface0, Rival },
+    { { 0x1880 }, Iface2, RivalPro },
 };
 
 }  // namespace
