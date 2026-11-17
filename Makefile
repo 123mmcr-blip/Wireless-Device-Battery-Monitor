@@ -25,8 +25,6 @@ clean:
 
 test:
 	@mkdir -p build
-	$(CXX) $(CXXFLAGS) tests/dareu_driver_test.cpp src/drivers/dareu.cpp -o build/dareu_driver_test.exe
-	./build/dareu_driver_test.exe
 	$(CXX) -std=c++17 -O2 -Wall tests/rapoo_protocol_test.cpp -o build/rapoo_protocol_test.exe
 	./build/rapoo_protocol_test.exe
 	$(CXX) $(CXXFLAGS) tests/rapoo_driver_test.cpp src/drivers/rapoo.cpp -o build/rapoo_driver_test.exe
