@@ -83,11 +83,16 @@ void PollKysona(PollContext& ctx) {
                     s.millivolts = (r[8] << 8) | r[9];
                 }
                 if (!answered) continue;
+                if (!s.connected) {
+                    ctx.Claim(vid, pid);
+                    break;
+                }
                 s.key = L"kysona:" + Hex4(vid) + L":" + Hex4(pid);
                 s.name = CleanName(HidProduct(*c), vid, pid);
                 s.kind = KindFromCollections(ctx.colls, vid, pid);
                 if (s.kind == DeviceKind::Other) s.kind = DeviceKind::Mouse;
                 s.via = IsCable(vid, pid) ? L"USB cable" : L"2.4 GHz receiver";
+                s.graceSec = 1800;
                 // A mouse plugged in for charging can show up twice (cable + dongle); keep one.
                 bool dup = false;
                 for (auto& n : seenNames) dup |= n == s.name;
