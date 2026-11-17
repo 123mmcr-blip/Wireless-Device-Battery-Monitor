@@ -63,6 +63,7 @@ void PollCorsair(PollContext& ctx);
 void PollCoolerMaster(PollContext& ctx);
 void PollPlayStation(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
+void PollAirPods(PollContext& ctx);   // Apple AirPods / Beats (BLE proximity broadcasts)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);
