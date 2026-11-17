@@ -266,6 +266,7 @@ std::wstring StatusText(const TrayEntry& e) {
     else if (s.percent >= 0) t = std::to_wstring(s.percent) + L"%";
     else if (e.lastPct >= 0) t = std::to_wstring(e.lastPct) + L"% (last known)";
     else t = L"unknown";
+    if (!s.detail.empty() && s.percent >= 0) t += L" (" + s.detail + L")";
     if (s.charging) t += L", charging";
     if (s.asleep) t += L", asleep";
     return t;
@@ -609,6 +610,7 @@ int ListToConsole(bool dump) {
         else if (!s.levelText.empty()) line += s.levelText;
         else if (s.percent >= 0) line += std::to_wstring(s.percent) + L"%";
         else line += L"unknown";
+        if (!s.detail.empty()) line += L" (" + s.detail + L")";
         if (s.charging) line += L", charging";
         if (s.millivolts) line += L", " + std::to_wstring(s.millivolts) + L" mV";
         write(line + L"   (" + s.key + L")\n");

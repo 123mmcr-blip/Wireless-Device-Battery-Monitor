@@ -31,6 +31,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollCoolerMaster(ctx);
     PollPlayStation(ctx);
     PollGameSir(ctx);
+    PollGalaxyBuds(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
     PollHeadsetControl(ctx);
     PollGenericHid(ctx);
     PollBluetooth(ctx);
