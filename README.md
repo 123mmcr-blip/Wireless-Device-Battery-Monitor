@@ -1,5 +1,7 @@
 # Wireless Battery
 
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/krisgfx)
+
 Battery levels of your wireless mouse, headset, keyboard and controller, right on the Windows taskbar.
 
 ![Wireless Battery on the taskbar](docs/screenshot.png)
