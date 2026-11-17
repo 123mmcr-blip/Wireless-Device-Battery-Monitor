@@ -102,7 +102,7 @@ just lose the extra headsets.
 
 ## Limitations
 
-- **Primary monitor only:** the taskbar widget sits on the primary monitor's taskbar.
+- **Other monitors:** with *Show my taskbar on all displays* on, the widget also appears on each secondary taskbar, just left of its clock. When the full layout does not fit between the app buttons and the clock (e.g. a portrait monitor), it uses a compact one (no `%`, tighter spacing); if even that does not fit, it hides on that taskbar rather than cover app buttons. Vertical secondary taskbars are skipped.
 - **Crowded taskbars:** with a very full centered Windows 11 taskbar, the app buttons can reach the widget. On Windows 10 the task-button area is narrowed automatically.
 - **Sleeping devices:** a device that is asleep may not answer. Its last value stays visible, dimmed. Logitech receivers drop sleeping devices from the link, so their last value is kept for 30 minutes.
 - **Keychron keyboards:** they only report their battery over Bluetooth (shown via the Bluetooth support). Over the 2.4 GHz receiver the firmware does not expose it. Keychron mice are supported.

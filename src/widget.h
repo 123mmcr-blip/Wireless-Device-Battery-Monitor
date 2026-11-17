@@ -1,6 +1,7 @@
 #pragma once
 // A small transparent strip on the taskbar, just left of the notification area, showing
-// "[icon] 30%  [icon] 93%". Implemented as a layered child window of the taskbar (Shell_TrayWnd).
+// "[icon] 30%  [icon] 93%". Implemented as a layered child window of the taskbar (Shell_TrayWnd), plus one
+// on each secondary-monitor taskbar (Shell_SecondaryTrayWnd), placed left of that taskbar's clock.
 #include <windows.h>
 #include <string>
 #include <vector>
@@ -17,7 +18,7 @@ struct WidgetItem {
 };
 
 namespace widget {
-// Creates the widget on the primary taskbar. Clicks are reported by posting `clickMsg` to `notifyWnd`.
+// Creates the widget on the primary taskbar (and every horizontal secondary taskbar). Clicks are reported by posting `clickMsg` to `notifyWnd`.
 bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme);
 void Destroy();
 bool Alive();
