@@ -36,6 +36,7 @@ int Px(int v) { return MulDiv(v, Dpi(), 96); }
 // runs on its own thread, which owns no windows, and the UI thread only reads the last rectangle.
 SRWLOCK g_wbLock = SRWLOCK_INIT;
 RECT g_wbRect{};             // last Widgets button rectangle (screen), empty when unknown
+HWND g_wbRectBar;            // taskbar g_wbRect was found in (guarded by g_wbLock)
 HWND g_wbTaskbar;            // taskbar to search, null while there is no widget (guarded by g_wbLock)
 HANDLE g_wbWake;             // auto-reset: wakes the lookup thread early
 
@@ -45,7 +46,7 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
     IUIAutomationElement* btn = nullptr;
     HWND btnBar = nullptr;
     for (;;) {
-        WaitForSingleObject(g_wbWake, 5000);
+        WaitForSingleObject(g_wbWake, btnBar ? 5000 : INFINITE);  // no widget (tray-icon mode): sleep until one
         AcquireSRWLockShared(&g_wbLock);
         HWND bar = g_wbTaskbar;
         ReleaseSRWLockShared(&g_wbLock);
@@ -76,16 +77,20 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
             }
         }
         AcquireSRWLockExclusive(&g_wbLock);
-        if (g_wbTaskbar == bar) g_wbRect = r;  // drop a result for a taskbar we no longer sit on
+        if (bar && g_wbTaskbar == bar) {  // drop a result for a taskbar we no longer sit on
+            g_wbRect = r;
+            g_wbRectBar = bar;
+        }
         ReleaseSRWLockExclusive(&g_wbLock);
     }
 }
 
 // Points the lookup thread at `taskbar` (null to idle it), starting the thread on first use.
+// The last rectangle is kept for its taskbar, so switching from tray-icon back to taskbar mode on the
+// same taskbar steps past the Widgets button straight away instead of after the next lookup.
 void WatchWidgetsButton(HWND taskbar) {
     AcquireSRWLockExclusive(&g_wbLock);
     g_wbTaskbar = taskbar;
-    g_wbRect = {};
     ReleaseSRWLockExclusive(&g_wbLock);
     if (!g_wbWake) {
         g_wbWake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -95,10 +100,10 @@ void WatchWidgetsButton(HWND taskbar) {
     if (g_wbWake) SetEvent(g_wbWake);
 }
 
-// Never blocks: returns what the lookup thread last found.
+// Never blocks: returns what the lookup thread last found on the current taskbar.
 RECT WidgetsButtonRect() {
     AcquireSRWLockShared(&g_wbLock);
-    RECT r = g_wbRect;
+    RECT r = g_wbRectBar && g_wbRectBar == g_wbTaskbar ? g_wbRect : RECT{};
     ReleaseSRWLockShared(&g_wbLock);
     return r;
 }
