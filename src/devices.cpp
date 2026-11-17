@@ -76,6 +76,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollMchoseG3(ctx);
     PollMsi(ctx);
     PollMachenike(ctx);  // before Ajazz in PollMiscMice, which shares the L7's 248A vendor id
+    PollMchoseModern(ctx);
     PollMiscMice(ctx);
     PollFantech(ctx);
     PollRazerHeadsets(ctx);  // before the generic Razer driver, which shares the vendor id
