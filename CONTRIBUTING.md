@@ -59,3 +59,9 @@ Please open an issue with:
 
 C++17, Win32 only, no third-party dependencies. Keep the binary small. Format roughly as the
 existing code does (4-space indent, 120-column lines).
+
+## Automatic safety check
+
+Every pull request is scanned by the "PR safety check" for things this app should never do (network
+access, launching programs, reading keyboard/clipboard/screen, startup entries, binaries, build or
+release changes). A flag is not a rejection: just explain the flagged lines in the PR description.
