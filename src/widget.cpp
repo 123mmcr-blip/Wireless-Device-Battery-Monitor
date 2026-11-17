@@ -29,7 +29,11 @@ struct Mirror {
     int lastLeft = INT_MIN;  // client x it was last placed at; INT_MIN = not placed (hidden)
 };
 std::vector<Mirror> g_mirrors;
-bool g_mirrorsOn = true;
+// Which taskbars show the strip: "all", "main", or one monitor's id (MonitorId), e.g. only monitor 3.
+// With one monitor chosen, the primary strip is hidden; if that monitor is not connected, the primary
+// strip is shown instead so the levels never disappear.
+std::wstring g_choice = L"all";
+bool g_primaryHidden = false;
 HWND g_dpiBar;  // while a mirror is painted or placed, Px() uses its taskbar's DPI
 
 const wchar_t* kClass = L"WirelessBatteryWidget";
@@ -501,8 +505,66 @@ std::vector<HWND> SecondaryTaskbars() {
 
 // Keeps one mirror per secondary taskbar: adds them for new monitors, removes them for gone ones.
 // Called from Reposition() about once a second; with one monitor it is a single FindWindowEx call.
+// A monitor's lasting identity: its device interface name, which survives reboots, Explorer restarts and
+// Windows renumbering the displays (falls back to "\\.\DISPLAYn").
+std::wstring MonitorId(HWND bar) {
+    MONITORINFOEXW mi{};
+    mi.cbSize = sizeof(mi);
+    HMONITOR mon = MonitorFromWindow(bar, MONITOR_DEFAULTTONULL);
+    if (!mon || !GetMonitorInfoW(mon, &mi)) return L"";
+    DISPLAY_DEVICEW dd{};
+    dd.cb = sizeof(dd);
+    if (EnumDisplayDevicesW(mi.szDevice, 0, &dd, EDD_GET_DEVICE_INTERFACE_NAME) && dd.DeviceID[0]) return dd.DeviceID;
+    return mi.szDevice;
+}
+
+// "Display 3 (right)": the number Windows gives the display and where it sits next to the main one.
+std::wstring MonitorLabel(HWND bar) {
+    MONITORINFOEXW mi{}, pm{};
+    mi.cbSize = pm.cbSize = sizeof(MONITORINFOEXW);
+    HMONITOR mon = MonitorFromWindow(bar, MONITOR_DEFAULTTONEAREST);
+    if (!GetMonitorInfoW(mon, &mi)) return L"Other monitor";
+    std::wstring dev = mi.szDevice;
+    size_t d = dev.find(L"DISPLAY");
+    std::wstring label = d != std::wstring::npos ? L"Display " + dev.substr(d + 7) : L"Other monitor";
+    POINT origin{ 0, 0 };
+    if (GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm)) {
+        int dx = (mi.rcMonitor.left + mi.rcMonitor.right - pm.rcMonitor.left - pm.rcMonitor.right) / 2;
+        int dy = (mi.rcMonitor.top + mi.rcMonitor.bottom - pm.rcMonitor.top - pm.rcMonitor.bottom) / 2;
+        label += abs(dx) >= abs(dy) ? (dx < 0 ? L" (left)" : L" (right)") : (dy < 0 ? L" (above)" : L" (below)");
+    }
+    return label;
+}
+
+// Hides or shows the strip on the main taskbar (it keeps running, just out of sight).
+void SetPrimaryHidden(bool hide) {
+    if (hide == g_primaryHidden || !g_wnd) return;
+    g_primaryHidden = hide;
+    if (hide) {
+        ShowWindow(g_wnd, SW_HIDE);
+        if (g_rebar && IsWindow(g_rebar)) {  // Windows 10: give the task buttons their full width back
+            RECT r;
+            GetClientRect(g_taskbar, &r);
+            PostMessageW(g_taskbar, WM_SIZE, SIZE_RESTORED, MAKELPARAM(r.right, r.bottom));
+        }
+    }
+    g_lastW = -1;  // re-place (and show) on the next pass
+}
+
 void SyncMirrors() {
-    std::vector<HWND> bars = g_mirrorsOn && g_wnd ? SecondaryTaskbars() : std::vector<HWND>{};
+    std::vector<HWND> all = g_wnd ? SecondaryTaskbars() : std::vector<HWND>{}, bars;
+    bool chosenFound = false;
+    if (g_choice == L"all") {
+        bars = all;
+    } else if (g_choice != L"main") {
+        for (HWND b : all)
+            if (MonitorId(b) == g_choice) {
+                bars.push_back(b);
+                chosenFound = true;
+                break;
+            }
+    }
+    SetPrimaryHidden(chosenFound);
     for (auto it = g_mirrors.begin(); it != g_mirrors.end();) {
         if (std::find(bars.begin(), bars.end(), it->bar) == bars.end() || !IsWindow(it->wnd)) {
             DestroyMirror(*it);
@@ -622,7 +684,7 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
     Paint();
     g_lastW = -1;
     Reposition();
-    ShowWindow(g_wnd, SW_SHOWNOACTIVATE);
+    if (!g_primaryHidden) ShowWindow(g_wnd, SW_SHOWNOACTIVATE);  // hidden when only another monitor is chosen
     return true;
 }
 
@@ -637,6 +699,7 @@ void Destroy() {
     for (auto& m : g_mirrors) DestroyMirror(m);
     g_mirrors.clear();
     SetMeasureMirrors(false);
+    g_primaryHidden = false;  // the next Create() decides again
     if (g_wbWake) WatchWidgetsButton(nullptr);
     if (g_tip) { DestroyWindow(g_tip); g_tip = nullptr; }
     if (g_wnd) { DestroyWindow(g_wnd); g_wnd = nullptr; }
@@ -675,16 +738,23 @@ void SetBackground(bool on) {
     PaintAll();
 }
 
-void SetOtherTaskbars(bool on) {
-    g_mirrorsOn = on;
-    SyncMirrors();  // adds or removes the copies right away
+void SetMonitorChoice(const std::wstring& choice) {
+    g_choice = choice.empty() ? L"all" : choice;
+    SyncMirrors();  // adds, removes or hides strips right away
+    if (g_wnd) Reposition();
 }
 
-bool HasOtherTaskbars() { return !SecondaryTaskbars().empty(); }
+std::vector<MonitorOption> OtherMonitors() {
+    std::vector<MonitorOption> out;
+    for (HWND b : SecondaryTaskbars()) out.push_back({ MonitorId(b), MonitorLabel(b) });
+    std::sort(out.begin(), out.end(), [](const MonitorOption& a, const MonitorOption& b) { return a.label < b.label; });
+    return out;
+}
 
 bool Reposition() {
     if (!Alive()) return false;
     SyncMirrors();
+    if (g_primaryHidden) return true;  // only another monitor's taskbar shows the strip
     if (Dpi() != g_lastDpi) { g_lastDpi = Dpi(); Paint(); }
     HWND tray = FindWindowExW(g_taskbar, nullptr, L"TrayNotifyWnd", nullptr);
     if (!tray) return true;

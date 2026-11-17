@@ -26,10 +26,15 @@ void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip)
 void SetLightTheme(bool light);
 // Draws a rounded plate in the taskbar's colours behind the text (kept across Create/Destroy).
 void SetBackground(bool on);
-// Also show the strip on secondary-monitor taskbars (default on; kept across Create/Destroy).
-void SetOtherTaskbars(bool on);
-// True when a horizontal secondary-monitor taskbar exists (the menu only offers the option then).
-bool HasOtherTaskbars();
+// Which taskbars show the strip: L"all" (default), L"main", or the id of one other monitor from
+// OtherMonitors() (then only that monitor shows it). Kept across Create/Destroy.
+void SetMonitorChoice(const std::wstring& choice);
+struct MonitorOption {
+    std::wstring id;     // lasting monitor identity, stored in the settings
+    std::wstring label;  // "Display 3 (right)"
+};
+// The monitors other than the main one that have a horizontal taskbar (empty with one monitor).
+std::vector<MonitorOption> OtherMonitors();
 // Re-checks the taskbar layout and moves the widget if needed; call about once a second.
 // Returns false when the taskbar it was attached to is gone.
 bool Reposition();
