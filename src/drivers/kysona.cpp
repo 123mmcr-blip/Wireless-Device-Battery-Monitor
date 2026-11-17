@@ -1,14 +1,24 @@
 // Kysona, Pulsar and ATK / VXE wireless mice (VID 3554, ATK dongles 373B), G-Wolves models on this protocol
 // (VID 33E4, e.g. Fenrir Asym) and the original Hitscan
-// Hyperlight (VID 3770, verified on the 1K receiver 3770:0200), and Pulsar's newer XS-1 generation
-// (VID 3710, verified on the 8K Dongle 3710:5406). They share one protocol:
+// Hyperlight (VID 3770, verified on the 1K receiver 3770:0200), Pulsar's newer XS-1 generation
+// (VID 3710, verified on the 8K Dongle 3710:5406) and Redragon's Compx-based mice (M916 Pro 1K,
+// M913 tri-mode, G49: receiver 3554:F55D / F5D5, cable F55E; verified on an M916 Pro 1K through
+// the F55D receiver). They share one protocol:
 // 17-byte output/input report id 08: [08][cmd][0 x14][checksum], checksum = 0x55 - sum(bytes 0..15).
 //   cmd 03 = online status -> reply [6] = 1 when the mouse is connected to the dongle
 //   cmd 04 = battery       -> reply [6] = percent, [7] = charging, [8..9] = millivolts
-// Reference: Linux drivers/hid/hid-kysona.c (Lode Willems) and the hid-pulsar patch discussion.
+// Reference: Linux drivers/hid/hid-kysona.c (Lode Willems) and the hid-pulsar patch discussion;
+// Redragon ids from github.com/EliottV17/redragon-battery-omarchy and github.com/pingpingjinping/g49-web-control.
 #include "drivers.h"
 
 namespace {
+
+// Redragon uses Compx's own ids, and its receiver only calls itself "2.4G Wireless Receiver".
+bool IsRedragon(USHORT vid, USHORT pid) { return vid == 0x3554 && (pid == 0xF55D || pid == 0xF5D5 || pid == 0xF55E); }
+
+bool IsCable(USHORT vid, USHORT pid) {
+    return (vid == 0x33E4 && GWolvesIsCable(pid)) || (vid == 0x3554 && pid == 0xF55E);
+}
 
 BYTE Checksum(const BYTE* b) {
     unsigned sum = 0;
@@ -34,6 +44,7 @@ bool Query(HidDev& d, BYTE cmd, std::vector<BYTE>& r) {
 
 std::wstring CleanName(std::wstring n, USHORT vid, USHORT pid) {
     if (vid == 0x33E4) return GWolvesModelName(pid);
+    if (IsRedragon(vid, pid)) return L"Redragon wireless mouse";  // shared by several models
     for (const wchar_t* suffix : { L" Dongle", L" Receiver", L" 2.4G", L" Wireless Receiver" }) {
         size_t l = wcslen(suffix);
         if (n.size() > l && n.compare(n.size() - l, l, suffix) == 0) n = n.substr(0, n.size() - l);
@@ -76,7 +87,7 @@ void PollKysona(PollContext& ctx) {
                 s.name = CleanName(HidProduct(*c), vid, pid);
                 s.kind = KindFromCollections(ctx.colls, vid, pid);
                 if (s.kind == DeviceKind::Other) s.kind = DeviceKind::Mouse;
-                s.via = (vid == 0x33E4 && GWolvesIsCable(pid)) ? L"USB cable" : L"2.4 GHz receiver";
+                s.via = IsCable(vid, pid) ? L"USB cable" : L"2.4 GHz receiver";
                 // A mouse plugged in for charging can show up twice (cable + dongle); keep one.
                 bool dup = false;
                 for (auto& n : seenNames) dup |= n == s.name;
