@@ -214,7 +214,17 @@ struct Canvas {
     }
 };
 
-struct Piece { Mask m; Rgb color; int alpha; int gapAfter; };
+// One drawn piece of the strip. Normal pieces follow each other from left to right. A piece with an
+// `anchor` (index of an earlier piece) is a caption: drawn over that piece, `bx`/`by` from its top-left
+// corner, and taking no room of its own.
+struct Piece {
+    Mask m;
+    Rgb color;
+    int alpha;
+    int gapAfter;
+    int anchor = -1;
+    int bx = 0, by = 0;
+};
 
 std::vector<Piece> Layout(int& width) {
     Rgb fg = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
@@ -223,6 +233,7 @@ std::vector<Piece> Layout(int& width) {
     HFONT icons = MakeFont(Px(16), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
     HFONT bolt = MakeFont(Px(11), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
     HFONT text = MakeFont(Px(13), FW_NORMAL, L"Segoe UI Variable Text", L"Segoe UI");
+    HFONT caption = MakeFont(std::max(8, Px(7)), FW_SEMIBOLD, L"Segoe UI Variable Text", L"Segoe UI");  // never under 8 px
 
     std::vector<Piece> out;
     if (g_items.empty()) out.push_back({ RenderMask(std::wstring(1, kBatteryUnknown), icons), fg, 110, 0 });
@@ -230,18 +241,28 @@ std::vector<Piece> Layout(int& width) {
         const auto& it = g_items[i];
         int a = it.dim ? 120 : 255;
         Rgb tc = it.low ? red : fg;
+        size_t glyph = out.size();
         out.push_back({ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons), fg, a, Px(5) });
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
         out.push_back({ RenderMask(t, text), tc, a, it.charging ? Px(2) : 0 });
         if (it.charging) out.push_back({ RenderMask(std::wstring(1, kBolt), bolt), charge, a, 0 });
         out.back().gapAfter = i + 1 < g_items.size() ? Px(14) : 0;
+        if (!it.label.empty()) {  // tiny caption in the bottom-right corner of the icon
+            Piece c{ RenderMask(it.label, caption), fg, a, 0 };
+            c.anchor = (int)glyph;
+            c.bx = out[glyph].m.w - c.m.w + Px(3);
+            c.by = out[glyph].m.h - c.m.h + Px(3);
+            out.push_back(c);
+        }
     }
     DeleteObject(icons);
     DeleteObject(bolt);
     DeleteObject(text);
+    DeleteObject(caption);
 
     width = Px(8) * 2;
-    for (auto& p : out) width += p.m.w + p.gapAfter;
+    for (auto& p : out)
+        if (p.anchor < 0) width += p.m.w + p.gapAfter;
     return out;
 }
 
@@ -268,13 +289,26 @@ void Paint() {
     };
     // Optional plate in the taskbar's own colours: keeps the text readable when a taskbar theme
     // (e.g. Windhawk's Taskbar Styler) makes the bar transparent over the wallpaper.
-    if (g_background) roundRect(Px(4), Px(6), g_light ? Rgb{ 243, 243, 243 } : Rgb{ 32, 32, 32 }, 240);
+    Rgb barColor = g_light ? Rgb{ 243, 243, 243 } : Rgb{ 32, 32, 32 };
+    if (g_background) roundRect(Px(4), Px(6), barColor, 240);
     if (g_hover) roundRect(Px(4), Px(4), g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 }, g_light ? 20 : 26);
 
     int x = Px(8);
-    for (auto& p : pieces) {
-        cv.Draw(p.m, x, (H - p.m.h) / 2, p.color, p.alpha);
-        x += p.m.w + p.gapAfter;
+    std::vector<int> xs(pieces.size()), ys(pieces.size());
+    for (size_t i = 0; i < pieces.size(); i++) {
+        const Piece& p = pieces[i];
+        if (p.anchor < 0) {
+            xs[i] = x;
+            ys[i] = (H - p.m.h) / 2;
+            x += p.m.w + p.gapAfter;
+        } else {  // caption: one-pixel outline in the taskbar's colour so it reads over the icon's lines
+            xs[i] = xs[p.anchor] + p.bx;
+            ys[i] = ys[p.anchor] + p.by;
+            for (int oy = -1; oy <= 1; oy++)
+                for (int ox = -1; ox <= 1; ox++)
+                    if (ox || oy) cv.Draw(p.m, xs[i] + ox, ys[i] + oy, barColor, 255);
+        }
+        cv.Draw(p.m, xs[i], ys[i], p.color, p.alpha);
     }
 
     HDC screen = GetDC(nullptr);

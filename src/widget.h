@@ -14,6 +14,7 @@ struct WidgetItem {
     bool dim      = false;  // asleep / stale value
     bool low      = false;
     bool bluetooth = false;  // picks the Bluetooth icon when the device type is unknown
+    std::wstring label;      // tiny caption on the icon; set only when two devices of one kind are shown
 };
 
 namespace widget {
