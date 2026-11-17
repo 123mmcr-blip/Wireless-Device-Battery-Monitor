@@ -47,6 +47,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollFlydigi(ctx);
     PollGameSirCyclone(ctx);
     PollAirPods(ctx);  // before the Bluetooth fallback, which has no level for AirPods
+    PollPhoneLink(ctx);
     PollHeadsetControl(ctx);
     PollBluetooth(ctx);   // before the generic HID check: Windows' own level wins for the same device
     PollGenericHid(ctx);
