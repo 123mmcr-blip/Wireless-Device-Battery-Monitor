@@ -55,6 +55,7 @@ void PollNinjutso(PollContext& ctx);  // Sora V2 1K receiver (1915:AE1C)
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
 void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle (AJAZZ AK820 MAX, AK980 V2, AULA F108 Pro)
+void PollAjazzAk992(PollContext& ctx); // AJAZZ AK992 on the Telink 2.4 GHz receiver
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 dongle
