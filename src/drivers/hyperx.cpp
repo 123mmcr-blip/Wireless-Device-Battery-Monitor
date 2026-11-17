@@ -116,6 +116,28 @@ bool CloudAlpha2(const HidColl& c, DeviceStatus& s) {
     return true;
 }
 
+// Pulsefire Haste 2 (Core) Wireless: NGENUITY's read-only battery query, the same 52 01 / 50 02 pair as
+// Cloud Alpha 2, on the dongle's vendor collection (interface 2). 64-byte reports.
+// From github.com/PMarinov1994/ngenuity-linux-cli (Haste 2 Wireless); the Core Wireless (03F0:0AB5) is unverified.
+bool HasteWireless(const HidColl& c, DeviceStatus& s) {
+    HidDev d;
+    if (!d.Open(c)) return false;
+    auto q = [&](BYTE cmd, BYTE sub, std::vector<BYTE>& r) {
+        return Query(d, { cmd, sub }, r, 1000, [cmd, sub](const std::vector<BYTE>& r) { return r.size() >= 8 && r[0] == cmd + 1 && r[1] == sub; });
+    };
+    std::vector<BYTE> r;
+    if (!q(0x52, 0x01, r)) return false;
+    s = Base(c.pid, c.pid == 0x0AB5 ? L"HyperX Pulsefire Haste 2 Core Wireless" : L"HyperX Pulsefire Haste 2 Wireless");
+    s.kind = DeviceKind::Mouse;
+    s.connected = r[2] != 0;
+    if (s.connected && q(0x50, 0x02, r) && r[2] <= 100) {
+        s.percent = r[2];
+        s.charging = r[3] == 0x01 || r[3] == 0x02;
+        s.millivolts = r[6] | (r[7] << 8);
+    }
+    return true;
+}
+
 // Cloud Flight: 21 FF 05 -> [3..4] mV (above 0x100B means charging).
 bool CloudFlight(const HidColl& c, DeviceStatus& s) {
     HidDev d;
@@ -223,6 +245,8 @@ const Model kModels[] = {
     { 0x0951, { 0x1718 }, [](const HidColl& c) { return c.outLen() == 62; }, Cloud2Kingston },
     { 0x03F0, { 0x098D }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudAlpha },
     { 0x03F0, { 0x08BE }, [](const HidColl& c) { return c.page() == 0xFF13 && c.usage() == 0xFF00; }, CloudAlpha2 },
+    // Pulsefire Haste 2 Wireless (0D97, 0F98) and Haste 2 Core Wireless (0AB5) dongles.
+    { 0x03F0, { 0x0AB5, 0x0D97, 0x0F98 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 2 && c.inLen() >= 8; }, HasteWireless },
     { 0x0951, { 0x16C4, 0x1723, 0x1749 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },
     { 0x03F0, { 0x0E90 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },  // Cloud Flight (HP)
     // Cloud Stinger Core Wireless: PlayStation receiver (HP) and the original Kingston receiver.
