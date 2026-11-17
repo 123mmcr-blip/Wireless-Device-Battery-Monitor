@@ -63,6 +63,7 @@ void PollCorsair(PollContext& ctx);
 void PollCoolerMaster(PollContext& ctx);
 void PollPlayStation(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
+void PollMoondrop(PollContext& ctx);   // MOONDROP GM01 Pro headset (WalkPlay 2.4 GHz dongle)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);
