@@ -42,6 +42,27 @@ std::wstring StrProp(HDEVINFO di, SP_DEVINFO_DATA* dd, const DEVPROPKEY& key) {
     return L"";
 }
 
+// Container properties like the category are string lists; only the first entry matters here.
+std::wstring FirstStringProp(HDEVINFO di, SP_DEVINFO_DATA* dd, const DEVPROPKEY& key) {
+    DEVPROPTYPE t;
+    wchar_t buf[256] = {};
+    if (SetupDiGetDevicePropertyW(di, dd, &key, &t, (PBYTE)buf, sizeof(buf) - sizeof(wchar_t), nullptr, 0) &&
+        (t == DEVPROP_TYPE_STRING_LIST || t == DEVPROP_TYPE_STRING))
+        return buf;
+    return L"";
+}
+
+// Classic Bluetooth devices carry a Class of Device, but LE devices (BTHLE\DEV_...) usually do not,
+// so KindFromClassOfDevice has nothing to work with and a LE keyboard or mouse ends up as "Other".
+// Windows still files the device under a category for Settings > Bluetooth & devices; use it.
+DeviceKind KindFromCategory(const std::wstring& c) {
+    if (c == L"Input.Keyboard") return DeviceKind::Keyboard;
+    if (c == L"Input.Mouse") return DeviceKind::Mouse;
+    if (c == L"Input.Gaming") return DeviceKind::Gamepad;
+    if (c.rfind(L"Communication.Headset", 0) == 0 || c == L"Audio.Headphones") return DeviceKind::Headset;
+    return DeviceKind::Other;
+}
+
 std::wstring StripServiceSuffix(std::wstring n) {
     for (const wchar_t* suf : { L" Hands-Free AG", L" Hands-Free", L" Avrcp Transport", L" Stereo", L" Audio Gateway" }) {
         size_t l = wcslen(suf);
@@ -111,6 +132,7 @@ void PollBluetooth(PollContext& ctx) {
     struct Found { int pct; std::wstring name; bool connected; };
     std::map<std::wstring, std::wstring> containerName;  // container id -> name of the main BT device node
     std::map<std::wstring, UINT32> containerCod;         // container id -> class of device
+    std::map<std::wstring, std::wstring> containerCat;   // container id -> device container category
     std::map<std::wstring, bool> containerConn;          // container id -> main BT device node connected
     std::map<std::wstring, Found> battery;
     SP_DEVINFO_DATA dd{ sizeof(dd) };
@@ -134,6 +156,8 @@ void PollBluetooth(PollContext& ctx) {
             UINT32 cod = 0;
             if (SetupDiGetDevicePropertyW(di, &dd, &kClassOfDevice, &t, (PBYTE)&cod, sizeof(cod), nullptr, 0) && t == DEVPROP_TYPE_UINT32)
                 containerCod[cid] = cod;
+            std::wstring cat = FirstStringProp(di, &dd, DEVPKEY_DeviceContainer_Category);
+            if (!cat.empty()) containerCat[cid] = cat;
             DEVPROP_BOOLEAN conn;
             if (SetupDiGetDevicePropertyW(di, &dd, &kIsConnected, &t, (PBYTE)&conn, sizeof(conn), nullptr, 0) &&
                 t == DEVPROP_TYPE_BOOLEAN)
@@ -174,6 +198,10 @@ void PollBluetooth(PollContext& ctx) {
         s.percent = f.pct;
         auto cod = containerCod.find(cid);
         s.kind = cod != containerCod.end() ? KindFromClassOfDevice(cod->second) : DeviceKind::Other;
+        if (s.kind == DeviceKind::Other) {
+            auto cat = containerCat.find(cid);
+            if (cat != containerCat.end()) s.kind = KindFromCategory(cat->second);
+        }
         if (s.kind == DeviceKind::Other) s.kind = GuessKind(s.name);
         ctx.out.push_back(s);
     }
