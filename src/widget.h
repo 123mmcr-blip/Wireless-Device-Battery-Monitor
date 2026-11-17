@@ -24,6 +24,10 @@ void Destroy();
 bool Alive();
 void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip);
 void SetLightTheme(bool light);
+// Whether to also show the widget on secondary-monitor taskbars (default on).
+void SetOtherTaskbars(bool on);
+// True when a horizontal secondary-monitor taskbar exists.
+bool HasOtherTaskbars();
 // Re-checks the taskbar layout and moves the widget if needed; call about once a second.
 // Returns false when the taskbar it was attached to is gone.
 bool Reposition();

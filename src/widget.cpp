@@ -29,6 +29,7 @@ HWND g_tip, g_notify;
 HINSTANCE g_inst;
 UINT g_clickMsg;
 bool g_light;
+bool g_others = true;  // also show on secondary-monitor taskbars
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 
@@ -436,8 +437,14 @@ void RemoveBar(size_t i) {
     g_bars.erase(g_bars.begin() + i);
 }
 
-// Adds strips for new secondary taskbars and drops those whose taskbar is gone.
+// Adds strips for new secondary taskbars and drops those whose taskbar is gone (all of them when
+// showing on other taskbars is turned off).
 void SyncSecondaries() {
+    if (!g_others) {
+        for (size_t i = g_bars.size(); i-- > 0;)
+            if (!g_bars[i]->primary) RemoveBar(i);
+        return;
+    }
     for (size_t i = g_bars.size(); i-- > 0;)
         if (!g_bars[i]->primary && (!IsWindow(g_bars[i]->taskbar) || !Horizontal(g_bars[i]->taskbar))) RemoveBar(i);
     for (HWND t = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); t;
@@ -539,7 +546,7 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
                             notifyWnd, nullptr, inst, nullptr);
     if (g_tip) SendMessageW(g_tip, TTM_SETMAXTIPWIDTH, 0, 600);
 
-    StartMeasuring();
+    if (g_others) StartMeasuring();
     Bar* primary = AddBar(taskbar, true);
     if (!primary) {
         Destroy();
@@ -579,6 +586,20 @@ void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip)
     }
     PaintAll();
     Reposition();
+}
+
+void SetOtherTaskbars(bool on) {
+    g_others = on;
+    if (!on) StopMeasuring();
+    else if (!g_bars.empty()) StartMeasuring();
+    Reposition();
+}
+
+bool HasOtherTaskbars() {
+    for (HWND t = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); t;
+         t = FindWindowExW(nullptr, t, L"Shell_SecondaryTrayWnd", nullptr))
+        if (Horizontal(t)) return true;
+    return false;
 }
 
 void SetLightTheme(bool light) {
