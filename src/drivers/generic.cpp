@@ -71,6 +71,24 @@ std::wstring StripServiceSuffix(std::wstring n) {
     return n;
 }
 
+// Container id of the device an HID interface belongs to, formatted like PollBluetooth's keys ("" if unknown).
+std::wstring ContainerOf(const std::wstring& path) {
+    wchar_t inst[MAX_DEVICE_ID_LEN] = {};
+    ULONG size = sizeof(inst);
+    DEVPROPTYPE t;
+    if (CM_Get_Device_Interface_PropertyW(path.c_str(), &DEVPKEY_Device_InstanceId, &t, (PBYTE)inst, &size, 0) != CR_SUCCESS)
+        return L"";
+    DEVINST dn;
+    GUID g{};
+    size = sizeof(g);
+    if (CM_Locate_DevNodeW(&dn, inst, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS ||
+        CM_Get_DevNode_PropertyW(dn, &DEVPKEY_Device_ContainerId, &t, (PBYTE)&g, &size, 0) != CR_SUCCESS)
+        return L"";
+    wchar_t buf[64];
+    StringFromGUID2(g, buf, 64);
+    return buf;
+}
+
 }  // namespace
 
 void PollGenericHid(PollContext& ctx) {
@@ -78,6 +96,8 @@ void PollGenericHid(PollContext& ctx) {
         if (ctx.IsClaimed(c.vid, c.pid)) continue;
         if (c.page() == 0x84 || c.page() == 0x85) continue;  // UPS / power supplies
         if (!c.caps.NumberFeatureValueCaps && !c.caps.NumberInputValueCaps) continue;
+        // Same physical device already shown with Windows' Bluetooth level (its HID field can read 0).
+        if (!ctx.btContainers.empty() && ctx.btContainers.count(ContainerOf(c.path))) continue;
         HANDLE h = CreateFileW(c.path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
         if (h == INVALID_HANDLE_VALUE) continue;
         PHIDP_PREPARSED_DATA pp;
@@ -204,5 +224,6 @@ void PollBluetooth(PollContext& ctx) {
         }
         if (s.kind == DeviceKind::Other) s.kind = GuessKind(s.name);
         ctx.out.push_back(s);
+        ctx.btContainers.insert(cid);
     }
 }

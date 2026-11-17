@@ -46,8 +46,8 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollFlydigi(ctx);
     PollGameSirCyclone(ctx);
     PollHeadsetControl(ctx);
+    PollBluetooth(ctx);   // before the generic HID check: Windows' own level wins for the same device
     PollGenericHid(ctx);
-    PollBluetooth(ctx);
     PollXInput(ctx);
     return ctx.out;
 }
