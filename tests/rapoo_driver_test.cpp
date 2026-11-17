@@ -35,7 +35,7 @@ bool HidDev::Open(const HidColl& c) {
 }
 void HidDev::Close() { h_ = INVALID_HANDLE_VALUE; }
 int HidDev::Read(std::vector<BYTE>& out, int timeoutMs) {
-    assert(timeoutMs > 0 && timeoutMs <= 4000);
+    assert(timeoutMs > 0 && timeoutMs <= 5000);
     auto& queue = reports[c_.path];
     if (queue.empty()) return -1;
     out = queue.front();

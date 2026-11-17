@@ -53,9 +53,10 @@ bool IsLegacyVT3Pro(USHORT pid) {
 }
 
 bool ReadBattery(HidDev& d, Rapoo::Battery& battery, Rapoo::Profile profile) {
-    // A passive legacy report can take ~3.2 seconds. One deadline includes unrelated reports;
+    // A passive legacy report can take ~3-4 seconds (one VT1 Pro Max gap in #136 was 4.03 s), so
+    // wait 5 s. One deadline includes unrelated reports;
     // do not flush, since a queued status report is already useful.
-    ULONGLONG end = GetTickCount64() + 4000;
+    ULONGLONG end = GetTickCount64() + 5000;
     do {
         int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
         std::vector<BYTE> r;
