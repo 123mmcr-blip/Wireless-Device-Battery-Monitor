@@ -1,3 +1,7 @@
+// The Windows HID backend. Linux uses hid_linux.cpp instead; this file is compiled only when
+// _WIN32 is defined so the existing Windows behaviour is byte-for-byte unchanged.
+#ifdef _WIN32
+
 #include "hid.h"
 
 #include <setupapi.h>
@@ -229,3 +233,5 @@ DeviceKind KindFromCollections(const std::vector<HidColl>& all, USHORT vid, USHO
     if (kbd) return DeviceKind::Keyboard;
     return DeviceKind::Other;
 }
+
+#endif  // _WIN32
