@@ -74,7 +74,7 @@ void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before
 void PollAtkBitmouse(PollContext& ctx);  // ATK / VXE NK NANO dongle 373B:1216 (before Kysona, same vendor id)
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro
-void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight, Redragon (incl. dual-mode M913)
+void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight, Redragon (Compx)
 void PollHyperX(PollContext& ctx);
 void PollLogitech(PollContext& ctx);
 void PollRazer(PollContext& ctx);
