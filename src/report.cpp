@@ -648,7 +648,7 @@ void Show(HINSTANCE inst, HWND owner) {
         wc.lpfnWndProc = WndProc;
         wc.hInstance = inst;
         wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1));
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         wc.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
         wc.lpszClassName = kClass;
         RegisterClassExW(&wc);
