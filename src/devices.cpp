@@ -55,6 +55,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollAtkBitmouse(ctx);  // before Kysona, which would probe the NK dongle with the wrong protocol
     PollKysona(ctx);
     PollKeychron(ctx);
+    PollArbiter(ctx);    // before Lamzu, which shares the 373E vendor id
     PollLamzu(ctx);
     PollEndgame(ctx);
     PollVaxee(ctx);
