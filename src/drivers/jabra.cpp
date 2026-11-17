@@ -58,7 +58,9 @@ void PollJabra(PollContext& ctx) {
     // Headset name per dongle: asked once while connected (a failed ask caches the generic name),
     // forgotten when the headset goes offline so a newly paired headset is picked up.
     static std::map<USHORT, std::wstring> names;
-    for (USHORT pid : { (USHORT)0x2E51, (USHORT)0x24C7 }) {  // Link 390, Link 380 / 390
+    // Link 380a / 380c and 390 USB-A / USB-C, UC and MS variants (product ids from Jabra Direct's
+    // DeviceInfo.xml; all share the dongle at GNP address 1 and the same firmware generation).
+    for (USHORT pid : { 0x24C7, 0x24C8, 0x24C9, 0x24CA, 0x2E50, 0x2E51, 0x2E56, 0x2E57 }) {
         if (ctx.IsClaimed(kJabra, pid)) continue;
         for (const HidColl* c : ctx.Find(kJabra, pid, [](const HidColl& c) {
                  return c.page() == 0xFF00 && c.outLen() >= 64 && c.inLen() >= 64;
