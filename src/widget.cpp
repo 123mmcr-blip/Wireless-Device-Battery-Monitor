@@ -1,6 +1,7 @@
 #include "widget.h"
 
 #include <commctrl.h>
+#include <uiautomation.h>
 #include <algorithm>
 
 namespace {
@@ -10,7 +11,8 @@ UINT g_clickMsg;
 bool g_light, g_hover;
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
-RECT g_lastTray{}, g_lastBar{};
+RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
+IUIAutomationElement* g_widgetsBtn;
 int g_lastW = -1, g_lastDpi = 0;
 SIZE g_size{};
 
@@ -21,6 +23,46 @@ int Dpi() {
     return d ? (int)d : 96;
 }
 int Px(int v) { return MulDiv(v, Dpi(), 96); }
+
+// Windows 11 puts the Widgets (weather) button right next to the tray when the taskbar is
+// left-aligned (start-aligned on right-to-left Windows). It is XAML, so only UI Automation knows
+// where it is. The element is looked up once per taskbar; its rectangle is re-read at most every
+// few seconds because the weather text changes its width.
+RECT WidgetsButtonRect() {
+    static IUIAutomation* uia = nullptr;
+    static ULONGLONG last = 0;
+    static RECT cached{};
+    ULONGLONG now = GetTickCount64();
+    if (last && now - last < 5000) return cached;
+    last = now;
+    cached = {};
+    if (!uia) {
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);  // UI thread; harmless if already initialised
+        if (FAILED(CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&uia)))
+            return cached;
+    }
+    if (!g_widgetsBtn) {
+        IUIAutomationElement* root = nullptr;
+        IUIAutomationCondition* cond = nullptr;
+        VARIANT id;
+        VariantInit(&id);
+        id.vt = VT_BSTR;
+        id.bstrVal = SysAllocString(L"WidgetsButton");
+        if (SUCCEEDED(uia->ElementFromHandle(g_taskbar, &root)) && root &&
+            SUCCEEDED(uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, id, &cond)) && cond)
+            root->FindFirst(TreeScope_Descendants, cond, &g_widgetsBtn);
+        VariantClear(&id);
+        if (cond) cond->Release();
+        if (root) root->Release();
+        if (!g_widgetsBtn) return cached;
+    }
+    if (FAILED(g_widgetsBtn->get_CurrentBoundingRectangle(&cached))) {
+        g_widgetsBtn->Release();  // stale (Widgets turned off, Explorer restarted): look it up again next time
+        g_widgetsBtn = nullptr;
+        cached = {};
+    }
+    return cached;
+}
 
 wchar_t Glyph(DeviceKind k, bool bluetooth) {
     switch (k) {
@@ -286,6 +328,7 @@ void Destroy() {
         PostMessageW(g_taskbar, WM_SIZE, SIZE_RESTORED, MAKELPARAM(r.right, r.bottom));
     }
     g_rebar = nullptr;
+    if (g_widgetsBtn) { g_widgetsBtn->Release(); g_widgetsBtn = nullptr; }
     if (g_tip) { DestroyWindow(g_tip); g_tip = nullptr; }
     if (g_wnd) { DestroyWindow(g_wnd); g_wnd = nullptr; }
     g_taskbar = nullptr;
@@ -321,7 +364,16 @@ bool Reposition() {
     RECT tr, bar;
     GetWindowRect(tray, &tr);
     GetWindowRect(g_taskbar, &bar);
-    POINT p{ tr.left, bar.top };
+    // Right-to-left Windows (Hebrew, Arabic) mirrors the taskbar: client x runs from the screen's right
+    // edge, so a window's client-space left edge is its screen-space right edge.
+    bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
+    int edge = rtl ? tr.right : tr.left;  // screen x we sit next to
+    // Step past the Widgets button when it sits where we would go.
+    RECT wb = WidgetsButtonRect();
+    if (wb.right > wb.left && wb.top < bar.bottom && wb.bottom > bar.top &&
+        (rtl ? wb.left < edge + g_size.cx + Px(2) && wb.right > edge : wb.right > edge - g_size.cx - Px(2) && wb.left < edge))
+        edge = rtl ? wb.right : wb.left;
+    POINT p{ edge, bar.top };
     ScreenToClient(g_taskbar, &p);
     int left = p.x - g_size.cx - Px(2);
 
@@ -329,7 +381,7 @@ bool Reposition() {
     if (g_rebar && IsWindow(g_rebar)) {
         RECT rr;
         GetWindowRect(g_rebar, &rr);
-        POINT tl{ rr.left, rr.top };
+        POINT tl{ rtl ? rr.right : rr.left, rr.top };
         ScreenToClient(g_taskbar, &tl);
         if (tl.x + (rr.right - rr.left) > left && left > tl.x)
             MoveWindow(g_rebar, tl.x, tl.y, left - tl.x, rr.bottom - rr.top, TRUE);
@@ -337,8 +389,11 @@ bool Reposition() {
 
     // Keep us above the taskbar's own content (our sibling windows).
     bool covered = GetWindow(g_wnd, GW_HWNDPREV) != nullptr;
-    if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) && g_lastW == g_size.cx) return true;
+    if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) && EqualRect(&wb, &g_lastWidgets) &&
+        g_lastW == g_size.cx)
+        return true;
     g_lastTray = tr;
+    g_lastWidgets = wb;
     g_lastBar = bar;
     g_lastW = g_size.cx;
     SetWindowPos(g_wnd, HWND_TOP, left, 0, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
