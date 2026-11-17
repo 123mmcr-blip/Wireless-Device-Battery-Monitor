@@ -3,7 +3,6 @@
 #include <commctrl.h>
 #include <uiautomation.h>
 #include <algorithm>
-#include <atomic>
 
 namespace {
 
@@ -30,90 +29,82 @@ int Px(int v) { return MulDiv(v, Dpi(), 96); }
 // where it is. The element is looked up once per taskbar; its rectangle is re-read every few
 // seconds because the weather text changes its width.
 //
-// The lookup runs on its own thread. UI Automation calls into Explorer, and while answering,
-// Explorer sends messages to our widget window, which is a child of its taskbar. Making those calls
-// on the widget window's own thread leaves both threads waiting on each other, and Explorer hangs
-// (seen with Windhawk's Taskbar Styler, whose larger XAML tree makes FindFirst slow).
-std::atomic<HWND> g_uiaTaskbar{ nullptr };  // taskbar to search; null while there is no widget
-HANDLE g_uiaWakeEvt;                        // set to look again right away
-SRWLOCK g_uiaLock = SRWLOCK_INIT;
-RECT g_uiaRect{};                           // last rectangle found, guarded by g_uiaLock
-
-// Stores `r` unless the widget has moved to another taskbar since the lookup that found it.
-void StoreWidgetsRect(HWND forTaskbar, const RECT& r) {
-    AcquireSRWLockExclusive(&g_uiaLock);
-    if (g_uiaTaskbar.load() == forTaskbar) g_uiaRect = r;
-    ReleaseSRWLockExclusive(&g_uiaLock);
-}
+// UI Automation calls go to Explorer and wait for its UI thread, while our widget is a child window
+// of the taskbar, so Explorer in turn waits for our UI thread whenever it lays out or sends input to
+// the widget. Making those calls from our UI thread deadlocks both: Explorer is reported hung
+// ("Cross-process", waiting on WirelessBattery.exe) and restarted, again and again. So the lookup
+// runs on its own thread, which owns no windows, and the UI thread only reads the last rectangle.
+SRWLOCK g_wbLock = SRWLOCK_INIT;
+RECT g_wbRect{};             // last Widgets button rectangle (screen), empty when unknown
+HWND g_wbRectBar;            // taskbar g_wbRect was found in (guarded by g_wbLock)
+HWND g_wbTaskbar;            // taskbar to search, null while there is no widget (guarded by g_wbLock)
+HANDLE g_wbWake;             // auto-reset: wakes the lookup thread early
 
 DWORD WINAPI WidgetsButtonThread(LPVOID) {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IUIAutomation* uia = nullptr;
     IUIAutomationElement* btn = nullptr;
-    HWND btnTaskbar = nullptr;  // taskbar that `btn` was found in
+    HWND btnBar = nullptr;
     for (;;) {
-        HWND taskbar = g_uiaTaskbar.load();
-        if (taskbar != btnTaskbar) {
-            if (btn) { btn->Release(); btn = nullptr; }
-            btnTaskbar = taskbar;
-            StoreWidgetsRect(taskbar, {});  // a new taskbar (Explorer restarted) or none
-        }
-        if (!taskbar) {  // tray-icon mode: nothing to look for until a widget is created again
-            WaitForSingleObject(g_uiaWakeEvt, INFINITE);
-            continue;
-        }
+        WaitForSingleObject(g_wbWake, btnBar ? 5000 : INFINITE);  // no widget (tray-icon mode): sleep until one
+        AcquireSRWLockShared(&g_wbLock);
+        HWND bar = g_wbTaskbar;
+        ReleaseSRWLockShared(&g_wbLock);
+        if (btn && bar != btnBar) { btn->Release(); btn = nullptr; }
+        btnBar = bar;
         RECT r{};
-        if (!uia)
-            CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation),
-                             (void**)&uia);
-        if (uia && !btn) {
-            IUIAutomationElement* root = nullptr;
-            IUIAutomationCondition* cond = nullptr;
-            VARIANT id;
-            VariantInit(&id);
-            id.vt = VT_BSTR;
-            id.bstrVal = SysAllocString(L"WidgetsButton");
-            if (SUCCEEDED(uia->ElementFromHandle(taskbar, &root)) && root &&
-                SUCCEEDED(uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, id, &cond)) && cond)
-                root->FindFirst(TreeScope_Descendants, cond, &btn);
-            VariantClear(&id);
-            if (cond) cond->Release();
-            if (root) root->Release();
+        if (bar && IsWindow(bar)) {
+            if (!uia)
+                CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&uia);
+            if (uia && !btn) {
+                IUIAutomationElement* root = nullptr;
+                IUIAutomationCondition* cond = nullptr;
+                VARIANT id;
+                VariantInit(&id);
+                id.vt = VT_BSTR;
+                id.bstrVal = SysAllocString(L"WidgetsButton");
+                if (SUCCEEDED(uia->ElementFromHandle(bar, &root)) && root &&
+                    SUCCEEDED(uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, id, &cond)) && cond)
+                    root->FindFirst(TreeScope_Descendants, cond, &btn);
+                VariantClear(&id);
+                if (cond) cond->Release();
+                if (root) root->Release();
+            }
+            if (btn && FAILED(btn->get_CurrentBoundingRectangle(&r))) {
+                btn->Release();  // stale (Widgets turned off, Explorer restarted): look it up again next time
+                btn = nullptr;
+                r = {};
+            }
         }
-        if (btn && FAILED(btn->get_CurrentBoundingRectangle(&r))) {
-            btn->Release();  // stale (Widgets turned off, Explorer restarted): look it up again next time
-            btn = nullptr;
-            r = {};
+        AcquireSRWLockExclusive(&g_wbLock);
+        if (bar && g_wbTaskbar == bar) {  // drop a result for a taskbar we no longer sit on
+            g_wbRect = r;
+            g_wbRectBar = bar;
         }
-        StoreWidgetsRect(taskbar, r);
-        WaitForSingleObject(g_uiaWakeEvt, 5000);
+        ReleaseSRWLockExclusive(&g_wbLock);
     }
 }
 
-// Points the lookup thread at `taskbar` (null to stop searching), starting the thread on first use.
-// The last rectangle is kept while the taskbar stays the same, so switching between taskbar and
-// tray-icon mode places the widget past the Widgets button straight away.
+// Points the lookup thread at `taskbar` (null to idle it), starting the thread on first use.
+// The last rectangle is kept for its taskbar, so switching from tray-icon back to taskbar mode on the
+// same taskbar steps past the Widgets button straight away instead of after the next lookup.
 void WatchWidgetsButton(HWND taskbar) {
-    static bool started = false;
-    if (!started && taskbar) {
-        g_uiaWakeEvt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        HANDLE t = g_uiaWakeEvt ? CreateThread(nullptr, 0, WidgetsButtonThread, nullptr, 0, nullptr) : nullptr;
-        if (!t) {
-            if (g_uiaWakeEvt) { CloseHandle(g_uiaWakeEvt); g_uiaWakeEvt = nullptr; }
-            return;
-        }
-        CloseHandle(t);
-        started = true;
+    AcquireSRWLockExclusive(&g_wbLock);
+    g_wbTaskbar = taskbar;
+    ReleaseSRWLockExclusive(&g_wbLock);
+    if (!g_wbWake) {
+        g_wbWake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        HANDLE t = g_wbWake ? CreateThread(nullptr, 0, WidgetsButtonThread, nullptr, 0, nullptr) : nullptr;
+        if (t) CloseHandle(t);
     }
-    g_uiaTaskbar.store(taskbar);
-    if (started) SetEvent(g_uiaWakeEvt);
+    if (g_wbWake) SetEvent(g_wbWake);
 }
 
-// Never blocks: returns what the lookup thread found last (empty until it has found the button).
+// Never blocks: returns what the lookup thread last found on the current taskbar.
 RECT WidgetsButtonRect() {
-    AcquireSRWLockShared(&g_uiaLock);
-    RECT r = g_uiaRect;
-    ReleaseSRWLockShared(&g_uiaLock);
+    AcquireSRWLockShared(&g_wbLock);
+    RECT r = g_wbRectBar && g_wbRectBar == g_wbTaskbar ? g_wbRect : RECT{};
+    ReleaseSRWLockShared(&g_wbLock);
     return r;
 }
 
@@ -364,7 +355,6 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
     g_wnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE, kClass, L"", WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 1, 1,
                             g_taskbar, nullptr, inst, nullptr);
     if (!g_wnd) { g_taskbar = nullptr; return false; }
-    WatchWidgetsButton(g_taskbar);
 
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_WIN95_CLASSES };
     InitCommonControlsEx(&icc);
@@ -380,6 +370,7 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
         SendMessageW(g_tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
         SendMessageW(g_tip, TTM_SETMAXTIPWIDTH, 0, 600);
     }
+    WatchWidgetsButton(g_taskbar);
     g_lastDpi = Dpi();
     Paint();
     g_lastW = -1;
@@ -396,7 +387,7 @@ void Destroy() {
         PostMessageW(g_taskbar, WM_SIZE, SIZE_RESTORED, MAKELPARAM(r.right, r.bottom));
     }
     g_rebar = nullptr;
-    WatchWidgetsButton(nullptr);
+    if (g_wbWake) WatchWidgetsButton(nullptr);
     if (g_tip) { DestroyWindow(g_tip); g_tip = nullptr; }
     if (g_wnd) { DestroyWindow(g_wnd); g_wnd = nullptr; }
     g_taskbar = nullptr;

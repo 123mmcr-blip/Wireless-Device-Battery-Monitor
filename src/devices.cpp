@@ -20,22 +20,28 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollKeychron(ctx);
     PollLamzu(ctx);
     PollEndgame(ctx);
+    PollVaxee(ctx);
     PollWlmouse(ctx);
     PollNinjutso(ctx);
+    PollSprime(ctx);
     PollRongyuan(ctx);
     PollSonix(ctx);
     PollSonyInzone(ctx);
     PollFractal(ctx);
     PollJabra(ctx);
+    PollJbl(ctx);
     PollRog(ctx);
     PollZowie(ctx);
+    PollRoyalKludge(ctx);
     PollMchose(ctx);
     PollRapoo(ctx);
     PollAreson(ctx);
     PollMchoseG3(ctx);
     PollMiscMice(ctx);
+    PollFantech(ctx);
     PollRazerHeadsets(ctx);  // before the generic Razer driver, which shares the vendor id
     PollHyperX(ctx);
+    PollLogitechG435(ctx);  // before the HID++ driver, which shares the vendor id
     PollLogitech(ctx);
     PollRazer(ctx);
     PollSteelSeries(ctx);
@@ -49,6 +55,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollAirPods(ctx);  // before the Bluetooth fallback, which has no level for AirPods
     PollPhoneLink(ctx);
     PollGalaxyBuds(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
+    PollMoondrop(ctx);
     PollHeadsetControl(ctx);
     PollBluetooth(ctx);   // before the generic HID check: Windows' own level wins for the same device
     PollGenericHid(ctx);
