@@ -12,6 +12,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     ctx.colls = EnumHid();
     PollGlorious(ctx);
     PollAula(ctx);       // before Kysona, which shares the 3554 vendor id and would probe it first
+    PollDareu(ctx);
     PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
     PollPulsar(ctx);     // before Kysona, which also scans the 3710 vendor id
     PollAtkBitmouse(ctx);  // before Kysona, which would probe the NK dongle with the wrong protocol
