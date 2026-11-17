@@ -144,6 +144,9 @@ void PollCorsair(PollContext& ctx) {
                         if (product.find(L"Receiver") != std::wstring::npos) s.name = L"Corsair wireless headset";
                     }
                 }
+                // Corsair headsets and their receivers use product ids 0Axx (HS80 RGB receiver 0A6B names
+                // itself "... Wireless Gaming Receiver", and its collections look like a keyboard).
+                if (s.kind == DeviceKind::Other && (pid >> 8) == 0x0A) s.kind = DeviceKind::Headset;
                 if (s.kind == DeviceKind::Other) s.kind = KindFromCollections(ctx.colls, vid, pid);
                 s.via = target == 0x08 ? L"USB / Bluetooth" : L"Corsair receiver";
                 s.percent = Clamp100((int)(level + 5) / 10);
