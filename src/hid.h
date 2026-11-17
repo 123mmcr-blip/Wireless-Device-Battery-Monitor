@@ -47,6 +47,9 @@ public:
     bool Write(std::initializer_list<BYTE> data, int timeoutMs = 500) { return Write(std::vector<BYTE>(data), timeoutMs); }
     // Reads one input report into `buf` (resized to fit). Returns the byte count, or -1 on timeout/error.
     int Read(std::vector<BYTE>& buf, int timeoutMs);
+    // For collections without an interrupt OUT pipe (WriteFile fails there): arms a read, sends
+    // `data` with HidD_SetOutputReport, and returns the first input report like Read() does.
+    int SetOutputAndRead(const std::vector<BYTE>& data, std::vector<BYTE>& buf, int timeoutMs);
     void Flush();  // discard queued input reports
 
     bool SetFeature(const std::vector<BYTE>& data);

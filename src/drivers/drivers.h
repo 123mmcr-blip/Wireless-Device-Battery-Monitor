@@ -56,6 +56,8 @@ void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
+void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset
+void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice
 void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery reports)
 void PollAreson(PollContext& ctx);    // Areson 25A7 receivers (Redragon M913 / M915)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
