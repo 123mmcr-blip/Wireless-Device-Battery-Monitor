@@ -29,11 +29,17 @@ std::vector<BYTE> Status(BYTE battery, bool charging = false, bool online = true
     return r;
 }
 
-PollContext Poll(std::vector<std::vector<BYTE>> data) {
+HidColl Cable() {
+    HidColl c = Collection();
+    c.pid = 0xAE11;
+    return c;
+}
+
+PollContext Poll(std::vector<std::vector<BYTE>> data, std::vector<HidColl> colls = { Collection() }) {
     replies = std::move(data);
     queries = 0;
     PollContext ctx;
-    ctx.colls = { Collection() };
+    ctx.colls = std::move(colls);
     PollNinjutso(ctx);
     return ctx;
 }
@@ -112,5 +118,31 @@ int main() {
     before = opens;
     PollNinjutso(ctx);
     assert(opens == before && ctx.out.empty());
+
+    // USB cable (1915:AE11): the status byte [12] stays 0 there, so the mouse counts as connected.
+    // Same fields as a reply captured from a Sora V2 on the cable: 05 15 00 00 01 00 00 00 00 4C 01 00 00 ...
+    ctx = Poll({ Status(0x4C, true, false) }, { Cable() });
+    assert(ctx.out.size() == 1 && ctx.IsClaimed(0x1915, 0xAE11) && queries == 1);
+    assert(ctx.out[0].connected && ctx.out[0].percent == 76 && ctx.out[0].charging);
+    assert(ctx.out[0].key == L"ninjutso:1915:AE11" && ctx.out[0].via == L"USB cable");
+    assert(ctx.out[0].name == L"Ninjutso Sora V2" && ctx.out[0].kind == DeviceKind::Mouse);
+    before = opens;
+    PollNinjutso(ctx);  // already claimed: not opened again
+    assert(opens == before && ctx.out.size() == 1);
+
+    // Receiver and cable plugged in together: one entry each, receiver first.
+    ctx = Poll({ Status(40), Status(41, true, false) }, { Collection(), Cable() });
+    assert(ctx.out.size() == 2 && queries == 2 && ctx.IsClaimed(0x1915, 0xAE1C) && ctx.IsClaimed(0x1915, 0xAE11));
+    assert(ctx.out[0].via == L"2.4 GHz receiver" && ctx.out[0].percent == 40 && !ctx.out[0].charging);
+    assert(ctx.out[1].via == L"USB cable" && ctx.out[1].percent == 41 && ctx.out[1].connected && ctx.out[1].charging);
+
+    // A receiver claimed by an earlier poll does not stop the cable from being read.
+    replies = { Status(55, true, false) };
+    queries = 0;
+    ctx = {};
+    ctx.colls = { Collection(), Cable() };
+    ctx.Claim(0x1915, 0xAE1C);
+    PollNinjutso(ctx);
+    assert(ctx.out.size() == 1 && ctx.out[0].via == L"USB cable" && ctx.out[0].percent == 55 && queries == 1);
     puts("Ninjutso driver tests passed");
 }
