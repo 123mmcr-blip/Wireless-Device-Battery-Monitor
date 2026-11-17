@@ -1,6 +1,7 @@
 #pragma once
 // A small transparent strip on the taskbar, just left of the notification area, showing
-// "[icon] 30%  [icon] 93%". Implemented as a layered child window of the taskbar (Shell_TrayWnd).
+// "[icon] 30%  [icon] 93%". Implemented as a layered child window of the taskbar (Shell_TrayWnd), with a
+// copy on each secondary-monitor taskbar (Shell_SecondaryTrayWnd) next to its clock.
 #include <windows.h>
 #include <string>
 #include <vector>
@@ -25,6 +26,10 @@ void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip)
 void SetLightTheme(bool light);
 // Draws a rounded plate in the taskbar's colours behind the text (kept across Create/Destroy).
 void SetBackground(bool on);
+// Also show the strip on secondary-monitor taskbars (default on; kept across Create/Destroy).
+void SetOtherTaskbars(bool on);
+// True when a horizontal secondary-monitor taskbar exists (the menu only offers the option then).
+bool HasOtherTaskbars();
 // Re-checks the taskbar layout and moves the widget if needed; call about once a second.
 // Returns false when the taskbar it was attached to is gone.
 bool Reposition();
