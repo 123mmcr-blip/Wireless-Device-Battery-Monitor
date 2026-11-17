@@ -1,4 +1,6 @@
-// WLMouse (VID 36A7): Beast X 8K, Beast X Mini / Mini Pro, Beast X Pro, Beast MAX and their receivers.
+// WLMouse (VID 36A7): Beast X 8K, Beast X Mini / Mini Pro, Beast X Pro, Beast MAX, Sword X 8K and their
+// receivers. The Sword X 8K ids (A878 receiver, A879 cable) and its FFFF:0000 collection come from an
+// owner's --dump (issue #75).
 // Read-only status query on the vendor collection (usage page FFFF, 65-byte feature report 0):
 //   SET_FEATURE [00][00][00][02][02][00][83][00 ...], then GET_FEATURE report 0 until
 //   [00][status][00][02][02][00][83][charging][battery%]; status A1 / A2 = answered, A0 = mouse asleep.
@@ -15,18 +17,21 @@ namespace {
 
 const USHORT kVid = 0x36A7;
 
-struct Model { USHORT pid; bool receiver; const wchar_t* name; };
+// Cables come before receivers: a mouse on its cable with the receiver also plugged in shows up under both
+// ids, so a cable that answers claims its receiver (`receiverPid`) and the mouse is listed once.
+struct Model { USHORT pid; bool receiver; const wchar_t* name; USHORT receiverPid; };
 const Model kModels[] = {
-    { 0xA860, false, L"WLMouse mouse" },
-    { 0xA866, false, L"WLMouse mouse" },
-    { 0xA867, false, L"WLMouse mouse" },
-    { 0xA868, true, L"WLMouse Beast X Mini Pro" },
-    { 0xA870, true, L"WLMouse Beast X Pro" },
-    { 0xA878, false, L"WLMouse mouse" },
-    { 0xA880, true, L"WLMouse Beast MAX" },
-    { 0xA883, true, L"WLMouse Beast X 8K" },
-    { 0xA884, false, L"WLMouse Beast X 8K" },
-    { 0xA885, true, L"WLMouse Beast X Mini" },
+    { 0xA879, false, L"WLMouse Sword X 8K", 0xA878 },
+    { 0xA884, false, L"WLMouse Beast X 8K", 0xA883 },
+    { 0xA860, false, L"WLMouse mouse", 0 },
+    { 0xA866, false, L"WLMouse mouse", 0 },
+    { 0xA867, false, L"WLMouse mouse", 0 },
+    { 0xA868, true, L"WLMouse Beast X Mini Pro", 0 },
+    { 0xA870, true, L"WLMouse Beast X Pro", 0 },
+    { 0xA878, true, L"WLMouse Sword X 8K", 0 },
+    { 0xA880, true, L"WLMouse Beast MAX", 0 },
+    { 0xA883, true, L"WLMouse Beast X 8K", 0 },
+    { 0xA885, true, L"WLMouse Beast X Mini", 0 },
 };
 
 enum class Reply { Battery, Asleep, None };
@@ -84,6 +89,7 @@ void PollWlmouse(PollContext& ctx) {
                 s.charging = charging;
             }
             ctx.Add(s, kVid, m.pid);
+            if (m.receiverPid) ctx.Claim(kVid, m.receiverPid);  // same mouse, already listed via its cable
             break;
         }
     }
