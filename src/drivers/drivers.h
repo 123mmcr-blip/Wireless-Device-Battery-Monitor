@@ -61,6 +61,7 @@ void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta 
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice
 void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery reports)
 void PollAreson(PollContext& ctx);    // Areson 25A7 receivers (Redragon M913 / M915)
+void PollMchose(PollContext& ctx);    // MCHOSE mice (L7 / M7 / A7 / K7 families, VID 5253)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro, BlackShark V2 Pro (2023)
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
@@ -80,6 +81,7 @@ void PollPlayStation(PollContext& ctx);
 void PollSteamController(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
 void PollFlydigi(PollContext& ctx);    // Vader 5 Pro vendor battery channel
+void PollGameSirCyclone(PollContext& ctx);  // Cyclone 2 (XInput mode)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);
