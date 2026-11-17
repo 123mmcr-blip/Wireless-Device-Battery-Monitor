@@ -54,6 +54,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollAtkBitmouse(ctx);  // before Kysona, which would probe the NK dongle with the wrong protocol
     PollKysona(ctx);
     PollKeychron(ctx);
+    PollCherry(ctx);
     PollLamzu(ctx);
     PollEndgame(ctx);
     PollVaxee(ctx);
