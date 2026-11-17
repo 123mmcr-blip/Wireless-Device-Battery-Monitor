@@ -63,6 +63,7 @@ void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 
 void PollJbl(PollContext& ctx);       // JBL Quantum 520 / 650 / 850 / 950 wireless headsets
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
+void PollRoyalKludge(PollContext& ctx);  // Royal Kludge MG6 Pro (VID 2E3C, QiWang protocol)
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice
 void PollMchoseG3(PollContext& ctx);  // MCHOSE G3 V2 wireless mouse (VID 3837)
