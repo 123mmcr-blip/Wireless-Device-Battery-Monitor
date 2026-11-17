@@ -2,7 +2,8 @@
 // Protocols: Pulsefire Haste 2 Core Wireless verified on hardware (03F0:0AB5), see HasteWireless;
 // Cloud III Wireless verified on hardware (03F0:0C9D) and github.com/Medprj/HyperXWM;
 // Cloud III S from github.com/LennardKittner/HyperHeadset; Cloud Stinger Core from
-// github.com/davidsantanaalves/HyperBatteryMonitor; the others follow github.com/Sapd/HeadsetControl.
+// github.com/davidsantanaalves/HyperBatteryMonitor (also Cloud Core Wireless DTS 0951:173F, verified on hardware);
+// the others follow github.com/Sapd/HeadsetControl.
 #include "drivers.h"
 
 #include <cmath>
@@ -221,7 +222,7 @@ bool StingerCore(const HidColl& c, DeviceStatus& s) {
 
     HidDev d;
     if (!d.Open(c)) return false;
-    const bool ps = c.pid == 0x0A93 || c.pid == 0x1713;
+    const bool ps = c.pid == 0x0A93 || c.pid == 0x1713 || c.pid == 0x173F;
     auto exchange = [&](const std::vector<BYTE>& cmd, std::vector<BYTE>& r, bool (*good)(const std::vector<BYTE>&)) {
         if (!d.SetFeature(cmd)) return false;
         for (int i = 0; i < (ps ? 10 : 1); i++) {
@@ -237,7 +238,7 @@ bool StingerCore(const HidColl& c, DeviceStatus& s) {
     std::vector<BYTE> r;
     // The connection reply's header isn't documented, so after 10 stale-looking reads the last one is used.
     if (!exchange(kConnection, r, fresh) && !(ps && r.size() >= 13 && !fresh(r))) return false;
-    s = Base(c.pid, L"HyperX Cloud Stinger Core Wireless");
+    s = Base(c.pid, c.pid == 0x173F ? L"HyperX Cloud Core Wireless" : L"HyperX Cloud Stinger Core Wireless");
     s.connected = r[11] == 0x01;
     if (!s.connected || !exchange(kBattery, r, battery)) return true;
     BYTE code = r[9];
@@ -272,7 +273,7 @@ const Model kModels[] = {
     { 0x03F0, { 0x0E90 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },  // Cloud Flight (HP)
     // Cloud Stinger Core Wireless: PlayStation receivers (HP 0A93, Kingston 1713) and the original Kingston receiver.
     { 0x03F0, { 0x0A93 }, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 32; }, StingerCore },
-    { 0x0951, { 0x170B, 0x1713 }, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 32; }, StingerCore },
+        { 0x0951, { 0x170B, 0x1713, 0x173F }, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 32; }, StingerCore },
 };
 
 }  // namespace
