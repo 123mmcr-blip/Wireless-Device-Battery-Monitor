@@ -63,6 +63,7 @@ void PollCorsair(PollContext& ctx);
 void PollCoolerMaster(PollContext& ctx);
 void PollPlayStation(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
+void PollPhoneLink(PollContext& ctx);  // phone linked with Microsoft Phone Link (reads its Start menu card)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);

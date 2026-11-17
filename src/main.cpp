@@ -352,7 +352,8 @@ int KindOrder(DeviceKind k) {  // headset first, then mouse, ... (matches the le
         case DeviceKind::Mouse:    return 1;
         case DeviceKind::Keyboard: return 2;
         case DeviceKind::Gamepad:  return 3;
-        default:                   return 4;
+        case DeviceKind::Phone:    return 4;
+        default:                   return 5;
     }
 }
 
