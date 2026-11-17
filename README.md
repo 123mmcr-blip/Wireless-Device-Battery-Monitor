@@ -8,7 +8,7 @@ Battery levels of your wireless mouse, headset, keyboard and controller, right o
 >
 > **Experienced users** can grab the portable zip, use the [command-line options](#command-line), or [build it from source](#build) with `make` or `build.bat`.
 >
-> **Like it?** Wireless Battery is free and open source. If it saves you a trip into vendor software, you can [support the project on GitHub Sponsors](https://github.com/sponsors/krisgfx9). It helps pay for test devices so more hardware can be verified.
+> **Like it?** Wireless Battery is free and open source. If it saves you a trip into vendor software, you can support it on [GitHub Sponsors](https://github.com/sponsors/krisgfx9) or [Ko-fi](https://ko-fi.com/krisgfx). It helps pay for test devices so more hardware can be verified.
 
 - **Tiny**: a ~350 KB app using about 2 MB of RAM. It's plain C++/Win32, with no runtime and no background service, and installs in seconds without admin rights.
 - **No vendor software needed**: it talks to the devices directly. G HUB, Synapse, iCUE, GG and NGenuity can stay closed (or keep running; they don't conflict).
