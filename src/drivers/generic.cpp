@@ -104,9 +104,10 @@ void PollBluetooth(PollContext& ctx) {
     HDEVINFO di = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
     if (di == INVALID_HANDLE_VALUE) return;
 
-    struct Found { int pct; std::wstring name; };
+    struct Found { int pct; std::wstring name; bool connected; };
     std::map<std::wstring, std::wstring> containerName;  // container id -> name of the main BT device node
     std::map<std::wstring, UINT32> containerCod;         // container id -> class of device
+    std::map<std::wstring, bool> containerConn;          // container id -> main BT device node connected
     std::map<std::wstring, Found> battery;
     SP_DEVINFO_DATA dd{ sizeof(dd) };
     for (DWORD i = 0; SetupDiEnumDeviceInfo(di, i, &dd); i++) {
@@ -129,22 +130,33 @@ void PollBluetooth(PollContext& ctx) {
             UINT32 cod = 0;
             if (SetupDiGetDevicePropertyW(di, &dd, &kClassOfDevice, &t, (PBYTE)&cod, sizeof(cod), nullptr, 0) && t == DEVPROP_TYPE_UINT32)
                 containerCod[cid] = cod;
+            DEVPROP_BOOLEAN conn;
+            if (SetupDiGetDevicePropertyW(di, &dd, &kIsConnected, &t, (PBYTE)&conn, sizeof(conn), nullptr, 0) &&
+                t == DEVPROP_TYPE_BOOLEAN)
+                containerConn[cid] = conn != DEVPROP_FALSE;
         }
 
         BYTE pct = 0;
         if (!SetupDiGetDevicePropertyW(di, &dd, &kBtBattery, &t, &pct, sizeof(pct), nullptr, 0) || t != DEVPROP_TYPE_BYTE) continue;
+        // The service node's own connected flag is only a fallback: headphones keep their level on the
+        // Hands-Free node, which reads as disconnected while audio runs over A2DP. The main device node
+        // decides below when there is one.
         DEVPROP_BOOLEAN conn = DEVPROP_TRUE;
-        if (SetupDiGetDevicePropertyW(di, &dd, &kIsConnected, &t, (PBYTE)&conn, sizeof(conn), nullptr, 0) && t == DEVPROP_TYPE_BOOLEAN &&
-            conn == DEVPROP_FALSE)
-            continue;
+        if (!SetupDiGetDevicePropertyW(di, &dd, &kIsConnected, &t, (PBYTE)&conn, sizeof(conn), nullptr, 0) ||
+            t != DEVPROP_TYPE_BOOLEAN)
+            conn = DEVPROP_TRUE;
         ULONG st = 0, prob = 0;
         if (CM_Get_DevNode_Status(&st, &prob, dd.DevInst, 0) == CR_SUCCESS && (st & DN_HAS_PROBLEM)) continue;
         if (pct > 100) continue;
-        battery[cid] = { pct, StripServiceSuffix(name) };
+        auto prev = battery.find(cid);
+        if (prev != battery.end() && prev->second.connected && conn == DEVPROP_FALSE) continue;  // prefer a live node
+        battery[cid] = { pct, StripServiceSuffix(name), conn != DEVPROP_FALSE };
     }
     SetupDiDestroyDeviceInfoList(di);
 
     for (auto& [cid, f] : battery) {
+        auto mc = containerConn.find(cid);
+        if (mc != containerConn.end() ? !mc->second : !f.connected) continue;
         DeviceStatus s;
         s.key = L"bt:" + cid;
         auto it = containerName.find(cid);
