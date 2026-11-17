@@ -250,6 +250,11 @@ void PollAjazzAj139(PollContext& ctx) {
             s.connected = cable || r[8] > 0;  // 0 from the dongle: the mouse is off or out of range
             if (s.connected) s.percent = r[8];
             ctx.Add(s, vendor, pid);
+            break;
+        }
+    }
+}
+
 void PollIncott(PollContext& ctx) {
     for (USHORT pid : { (USHORT)0x522C, (USHORT)0x622C }) {
         if (ctx.IsClaimed(0x093A, pid)) continue;
