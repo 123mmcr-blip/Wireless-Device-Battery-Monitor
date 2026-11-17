@@ -8,6 +8,7 @@ namespace {
 HWND g_wnd, g_taskbar, g_tip, g_notify, g_rebar;
 UINT g_clickMsg;
 bool g_light, g_hover;
+bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{};
@@ -160,17 +161,18 @@ void Paint() {
     // Nearly transparent background so the whole strip receives mouse input,
     // plus a rounded hover highlight like the system tray icons have.
     for (auto& p : cv.px) p = 0x01000000;
-    if (g_hover) {
-        int inset = Px(4), r = Px(4);
-        Rgb hc = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
-        int ha = g_light ? 20 : 26;
+    auto roundRect = [&](int inset, int r, Rgb c, int a) {
         for (int y = inset; y < H - inset; y++)
             for (int x = 0; x < W; x++) {
                 int dx = x < r ? r - x : (x >= W - r ? x - (W - r - 1) : 0);
                 int dy = y < inset + r ? inset + r - y : (y >= H - inset - r ? y - (H - inset - r - 1) : 0);
-                if (dx * dx + dy * dy <= r * r) cv.Blend(x, y, hc, ha);
+                if (dx * dx + dy * dy <= r * r) cv.Blend(x, y, c, a);
             }
-    }
+    };
+    // Optional plate in the taskbar's own colours: keeps the text readable when a taskbar theme
+    // (e.g. Windhawk's Taskbar Styler) makes the bar transparent over the wallpaper.
+    if (g_background) roundRect(Px(4), Px(6), g_light ? Rgb{ 243, 243, 243 } : Rgb{ 32, 32, 32 }, 240);
+    if (g_hover) roundRect(Px(4), Px(4), g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 }, g_light ? 20 : 26);
 
     int x = Px(8);
     for (auto& p : pieces) {
@@ -310,6 +312,11 @@ void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip)
 
 void SetLightTheme(bool light) {
     g_light = light;
+    Paint();
+}
+
+void SetBackground(bool on) {
+    g_background = on;
     Paint();
 }
 
