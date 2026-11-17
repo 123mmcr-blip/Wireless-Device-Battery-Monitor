@@ -105,16 +105,23 @@ int PollWgi(PollContext& ctx) {
 }
 
 using GetBatteryFn = DWORD(WINAPI*)(DWORD, BYTE, XINPUT_BATTERY_INFORMATION*);
+using GetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
 
-GetBatteryFn LoadXInput() {
-    static GetBatteryFn fn = [] {
+struct XInputApi { GetBatteryFn battery = nullptr; GetStateFn state = nullptr; };
+
+const XInputApi& LoadXInput() {
+    static XInputApi api = [] {
+        XInputApi a;
         for (const wchar_t* dll : { L"xinput1_4.dll", L"xinput9_1_0.dll" }) {
-            if (HMODULE m = LoadLibraryExW(dll, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32))
-                if (auto f = (GetBatteryFn)GetProcAddress(m, "XInputGetBatteryInformation")) return f;
+            if (HMODULE m = LoadLibraryExW(dll, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)) {
+                a.battery = (GetBatteryFn)GetProcAddress(m, "XInputGetBatteryInformation");
+                a.state = (GetStateFn)GetProcAddress(m, "XInputGetState");
+                if (a.battery && a.state) break;
+            }
         }
-        return (GetBatteryFn) nullptr;
+        return a;
     }();
-    return fn;
+    return api;
 }
 
 }  // namespace
@@ -125,14 +132,20 @@ void PollXInput(PollContext& ctx) {
     for (auto& s : ctx.out) btXbox |= s.via == L"Bluetooth" && s.name.find(L"Xbox") != std::wstring::npos;
     int precise = btXbox ? 0 : PollWgi(ctx);
 
-    GetBatteryFn get = LoadXInput();
-    if (!get) return;
+    const XInputApi& api = LoadXInput();
+    if (!api.battery || !api.state) return;
     for (DWORD user = 0; user < 4; user++) {
+        // The Xbox Wireless adapter answers battery queries for empty slots too (one controller
+        // showed up as four "Medium" headsets), so only look at slots with a controller connected.
+        XINPUT_STATE state{};
+        if (api.state(user, &state) != ERROR_SUCCESS) continue;
         for (BYTE type : { (BYTE)BATTERY_DEVTYPE_GAMEPAD, (BYTE)BATTERY_DEVTYPE_HEADSET }) {
             if (type == BATTERY_DEVTYPE_GAMEPAD && (btXbox || precise > 0)) continue;  // already shown precisely
             XINPUT_BATTERY_INFORMATION bi{};
-            if (get(user, type, &bi) != ERROR_SUCCESS) continue;
+            if (api.battery(user, type, &bi) != ERROR_SUCCESS) continue;
             if (bi.BatteryType == BATTERY_TYPE_DISCONNECTED || bi.BatteryType == BATTERY_TYPE_WIRED) continue;
+            // Without a headset plugged in, the headset query can still answer with an unknown type.
+            if (type == BATTERY_DEVTYPE_HEADSET && bi.BatteryType == BATTERY_TYPE_UNKNOWN) continue;
             DeviceStatus s;
             s.key = L"xinput:" + std::to_wstring(user) + L":" + std::to_wstring(type);
             s.name = type == BATTERY_DEVTYPE_GAMEPAD ? L"Xbox controller " + std::to_wstring(user + 1) : L"Xbox headset";
