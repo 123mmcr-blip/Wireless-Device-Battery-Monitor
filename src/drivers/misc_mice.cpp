@@ -157,7 +157,7 @@ void PollXenta(PollContext& ctx) {
                 l.lastFrameAt = GetTickCount64();
                 got++;
             }
-            if (l.last.empty() || GetTickCount64() - l.lastFrameAt > 15000) break;  // mouse off: no frames
+            if (l.last.empty() || GetTickCount64() - l.lastFrameAt > 15000) continue;  // silent receiver: try the next one
             bool cable = pid == 0xFA55 || pid == 0x2155;
             BYTE code = l.last[1], st = l.last[3], level = l.last[4];
             const XentaModel* model = nullptr;
