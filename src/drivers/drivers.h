@@ -43,7 +43,7 @@ bool GWolvesIsCable(USHORT pid);
 
 // Vendor drivers (run in this order).
 void PollGlorious(PollContext& ctx);  // also Hitscan
-void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 wireless keyboards (before Kysona, same vendor id)
+void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99, MCHOSE K99 V2 etc. keyboards (before Kysona, same vendor id)
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro headset (virtual COM port)
 void PollKeychron(PollContext& ctx);  // Keychron mice
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0
