@@ -2,14 +2,49 @@
 // generic fallbacks then only look at what is left.
 #include "devices.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <cwchar>
 
 #include "drivers/drivers.h"
 #include "hid.h"
 
+namespace {
+
+// HKCU\Software\WirelessBattery\IgnoreDevices (REG_SZ): "VID:PID" pairs in hex, separated by spaces,
+// commas or semicolons (e.g. "28BD:0947, 046D:C547"). No driver ever opens those devices (issue #232).
+std::vector<std::pair<USHORT, USHORT>> IgnoredDevices() {
+    std::vector<std::pair<USHORT, USHORT>> out;
+    wchar_t buf[1024];
+    DWORD size = sizeof(buf);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"IgnoreDevices", RRF_RT_REG_SZ, nullptr, buf, &size) !=
+        ERROR_SUCCESS)
+        return out;
+    for (const wchar_t* p = buf; *p;) {
+        unsigned vid = 0, pid = 0;
+        int used = 0;
+        if (swscanf(p, L" %x:%x%n", &vid, &pid, &used) == 2 && used > 0) {
+            out.push_back({ (USHORT)vid, (USHORT)pid });
+            p += used;
+        } else {
+            p++;
+        }
+        while (*p == L',' || *p == L';' || *p == L' ') p++;
+    }
+    return out;
+}
+
+}  // namespace
+
 std::vector<DeviceStatus> PollAllDevices() {
     PollContext ctx;
     ctx.colls = EnumHid();
+    auto ignored = IgnoredDevices();
+    if (!ignored.empty())
+        ctx.colls.erase(std::remove_if(ctx.colls.begin(), ctx.colls.end(), [&](const HidColl& c) {
+                            return std::find(ignored.begin(), ignored.end(), std::make_pair(c.vid, c.pid)) != ignored.end();
+                        }),
+                        ctx.colls.end());
     PollGlorious(ctx);
     PollAula(ctx);       // before Kysona, which shares the 3554 vendor id and would probe it first
     PollDareu(ctx);
