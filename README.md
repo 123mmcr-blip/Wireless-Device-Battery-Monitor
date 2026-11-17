@@ -78,7 +78,7 @@ anywhere and run `WirelessBattery.exe`.
 
 ```
 WirelessBattery.exe --list   # print every device and its battery level, then exit
-WirelessBattery.exe --dump   # print every HID collection (useful when asking for a new device)
+WirelessBattery.exe --dump   # print every HID collection, plus raw Xenta (1D57) status frames (useful when asking for a new device)
 WirelessBattery.exe --quit   # close the running instance
 ```
 
