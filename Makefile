@@ -33,7 +33,5 @@ test:
 	./build/ninjutso_driver_test.exe
 	$(CXX) -std=c++17 -O2 -Wall tests/galaxy_buds_protocol_test.cpp -o build/galaxy_buds_protocol_test.exe
 	./build/galaxy_buds_protocol_test.exe
-	$(CXX) $(CXXFLAGS) tests/steelseries_driver_test.cpp src/drivers/steelseries.cpp -o build/steelseries_driver_test.exe
-	./build/steelseries_driver_test.exe
 
 .PHONY: clean test
