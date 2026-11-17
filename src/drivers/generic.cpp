@@ -63,6 +63,15 @@ DeviceKind KindFromCategory(const std::wstring& c) {
     return DeviceKind::Other;
 }
 
+// Bluetooth LE keyboards that also expose a mouse collection (for the knob or macros), so
+// KindFromCollections would call them a mouse. Matched on the exact HID vid/pid seen on the LE link.
+//  * 3151:4013 Attack Shark K86 (Rongyuan firmware) over Bluetooth, from the reporter's --dump in
+//    krisgfx9/Wireless-Device-Battery-Monitor#168. Its USB ids are 3151:4011 / 4015 (OpenRGB issue 4074).
+DeviceKind KindFromBleIds(USHORT vid, USHORT pid) {
+    if (vid == 0x3151 && pid == 0x4013) return DeviceKind::Keyboard;
+    return DeviceKind::Other;
+}
+
 std::wstring StripServiceSuffix(std::wstring n) {
     for (const wchar_t* suf : { L" Hands-Free AG", L" Hands-Free", L" Avrcp Transport", L" Stereo", L" Audio Gateway" }) {
         size_t l = wcslen(suf);
@@ -242,6 +251,7 @@ void PollBluetooth(PollContext& ctx) {
         }
         // Bluetooth LE devices have no class of device; their HID collections tell a mouse from a keyboard.
         auto ids = hidIds.find(cid);
+        if (s.kind == DeviceKind::Other && ids != hidIds.end()) s.kind = KindFromBleIds(ids->second.first, ids->second.second);
         if (s.kind == DeviceKind::Other && ids != hidIds.end()) s.kind = KindFromCollections(ctx.colls, ids->second.first, ids->second.second);
         if (s.kind == DeviceKind::Other) s.kind = GuessKind(s.name);
         ctx.out.push_back(s);
