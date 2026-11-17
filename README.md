@@ -103,6 +103,7 @@ Hover for details. Click for the menu: every device (click one to hide or show i
 | **Sony** | DualShock 4, DualSense, DualSense Edge (USB, Bluetooth, wireless adapter); INZONE H9 II and H5 headsets | Input report; INZONE vendor protocol |
 | **MOONDROP** | GM01 Pro headset on its 2.4 GHz dongle (`35D8:0133`); on its USB cable it shows as charging with the last level | WalkPlay vendor read command on report `4B` (read-only) |
 | **JBL** | Quantum 650 Wireless (tested, 2.4 GHz dongle); Quantum 520, 650X, 850, 950, 950X Wireless (dongle or USB cable, same protocol, untested) | JBL "HIDV3" device-info query for the battery feature (usage page FF12), with charging state |
+| **JBL** | Quantum 350 Wireless (tested on Windows with the `0ECB:206B` 2.4 GHz receiver) | HIDV1 feature reports for wireless connection and battery percentage |
 | **GameSir** | Nova Lite, Nova 2, Nova 2 Lite on the 2.4 GHz receiver; Nova 2 Lite on USB | Vendor device-info query (usage page FF7A) |
 | **Xbox** | Controllers on the Xbox Wireless adapter, USB or Bluetooth; headsets plugged into a controller | Windows.Gaming.Input battery report (real %), XInput fallback |
 | **Apple AirPods / Beats** | AirPods Max (tested, `200A` Lightning and `201F` USB-C), AirPods Pro 3 (tested, `2027`), AirPods Pro 1 / 2, AirPods 1–5 and Beats headphones/earbuds | BLE "proximity pairing" (`0x07`) broadcasts (single battery for AirPods Max and Beats headphones; left, right and case for earbuds, in 10% steps with charging state), matched to the paired model |
@@ -290,7 +291,7 @@ The protocols come from these projects' research:
 - Linux `hid-playstation`: DualShock 4 / DualSense report layout
 - [SDL's Flydigi HID driver](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_flydigi.c) and [HaloBattery issue #191](https://github.com/HeyOkay/HaloBattery/issues/191): Vader 5 Pro query framing and battery layout
 - [SDL's 8BitDo HID driver](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_8bitdo.c): 8BitDo Ultimate 2 battery byte
-- JBL QuantumENGINE (its HIDV3 device-info messages): JBL Quantum headsets
+- JBL QuantumENGINE: HIDV1 connection and battery reports for the Quantum 350, and HIDV3 device-info messages for newer Quantum headsets
 
 ## License
 
