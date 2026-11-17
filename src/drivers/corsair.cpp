@@ -14,7 +14,7 @@ namespace {
 
 const USHORT kVoidPids[] = { 0x1B1C, 0x1B27, 0x0A14, 0x0A16, 0x0A17, 0x0A1D, 0x0A1A, 0x1B2A, 0x1B23,
                              0x1B29, 0x0A55, 0x0A51, 0x0A52, 0x0A38, 0x0A4F, 0x0A2B, 0x0A75, 0x0A56 };
-const USHORT kBragiPids[] = { 0x2A08, 0x2A02, 0x0A97, 0x0A64, 0x0A62, 0x0A3E, 0x0A3D };
+const USHORT kBragiPids[] = { 0x2A08, 0x2A02, 0x0A97, 0x0A64, 0x0A62, 0x0A3E, 0x0A3D, 0x2B00 };
 
 bool Contains(const USHORT* b, size_t n, USHORT v) { return std::find(b, b + n, v) != b + n; }
 
@@ -47,27 +47,46 @@ public:
     explicit Bragi(const HidColl& c) : numbered_(c.outLen() == 64) { ok_ = d_.Open(c); }
     bool ok() const { return ok_; }
     // Returns true and sets `value` on success; `status` holds the reply status (0 = ok, 5 = no such property).
+    // Two framings exist. "Prefixed" (older Bragi): 02 <target> 02 <prop>, reply 02 <source> 02 <status> <value>.
+    // "Plain" (newer Slipstream receivers such as 1B1C:2B00, e.g. Scimitar Elite SE Wireless):
+    // 00 <target> 02 <prop> (report ID 0), reply <source> 02 <status> <value>. The first framing that answers
+    // is remembered for this handle.
     bool Get(BYTE target, BYTE prop, unsigned& value, int timeoutMs = 300) {
-        std::vector<BYTE> req = numbered_ ? std::vector<BYTE>{ 0x02, target, 0x02, prop } : std::vector<BYTE>{ 0x00, 0x02, target, 0x02, prop };
+        if (mode_ != Plain && GetFramed(false, target, prop, value, timeoutMs)) { mode_ = Prefixed; return true; }
+        if (mode_ == Prefixed) return false;
+        if (GetFramed(true, target, prop, value, timeoutMs)) { mode_ = Plain; return true; }
+        return false;
+    }
+
+private:
+    bool GetFramed(bool plain, BYTE target, BYTE prop, unsigned& value, int timeoutMs) {
+        std::vector<BYTE> req;
+        if (plain) req = { 0x00, target, 0x02, prop };
+        else req = numbered_ ? std::vector<BYTE>{ 0x02, target, 0x02, prop } : std::vector<BYTE>{ 0x00, 0x02, target, 0x02, prop };
         d_.Flush();
         if (!d_.Write(req)) return false;
         BYTE source = target == 0x08 ? 0x00 : 0x01;
+        size_t o = plain ? 0 : 1;  // offset of the source byte in the reply
         ULONGLONG end = GetTickCount64() + timeoutMs;
         std::vector<BYTE> r;
         for (;;) {
             int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
-            if (left <= 0 || d_.Read(r, left) < 8) return false;
-            if (r[2] != 0x02 || r[1] != source) continue;  // notification or another app's reply
-            if (r[3] != 0x00) return false;
-            value = r[4] | (r[5] << 8) | (r[6] << 16) | ((unsigned)r[7] << 24);
+            if (left <= 0) return false;
+            int n = d_.Read(r, left);
+            if (n < 0) return false;
+            if ((size_t)n < o + 7) continue;
+            if (r[o + 1] != 0x02 || r[o] != source) continue;  // notification or another app's reply
+            if (r[o + 2] != 0x00) return false;
+            value = r[o + 3] | (r[o + 4] << 8) | (r[o + 5] << 16) | ((unsigned)r[o + 6] << 24);
             return true;
         }
     }
 
-private:
+    enum Mode { Unknown, Prefixed, Plain };
     HidDev d_;
     bool numbered_;
     bool ok_ = false;
+    Mode mode_ = Unknown;
 };
 
 }  // namespace
