@@ -49,6 +49,7 @@ void PollKeychron(PollContext& ctx);  // Keychron mice
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
+void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 dongle
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice
 void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery reports)
