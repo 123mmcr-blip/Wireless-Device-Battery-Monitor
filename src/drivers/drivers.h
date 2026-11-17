@@ -52,6 +52,7 @@ void PollEndgame(PollContext& ctx);   // Endgame Gear 4K mice (OP1w 4k, XM2w 4k)
 void PollWlmouse(PollContext& ctx);   // WLMouse Beast X family (VID 36A7)
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
+void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle (AJAZZ AK820 MAX, AK980 V2, AULA F108 Pro)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 dongle
