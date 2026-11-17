@@ -8,6 +8,9 @@
 #include <roapi.h>
 #include <winstring.h>
 #include <xinput.h>
+#ifndef ____FIReference_1_boolean_INTERFACE_DEFINED__
+#define ____FIReference_1_boolean_INTERFACE_DEFINED__  // avoid conflict with IReference<BYTE> in MinGW-w64 12+
+#endif
 #include <windows.system.power.h>
 // MinGW's windows.devices.power.h names BatteryStatus without its namespace; make it visible there.
 namespace ABI { namespace Windows { namespace Devices { namespace Power {

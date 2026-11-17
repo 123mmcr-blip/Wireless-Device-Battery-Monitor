@@ -35,6 +35,10 @@
 //    are tried last to first. From github.com/OmarK6/Incott-Manager (device.go),
 //    github.com/HeHaoren/incott-mouse-app (docs/protocol.md) and github.com/FelixNg21/MouseBattery
 //    (battery byte layout, verified on a G23 V2 with the 522C dongle).
+//  * Delux M800 Pro (VID 248A, receiver 5B2F, cable 5B2E): 33-byte feature report 0x0C on usage page
+//    FF00 / usage 01. A SET_FEATURE status query [0C][01][20][00][seq...] is answered via
+//    GET_FEATURE 0x0C: bytes [8..11] ASCII model ("M802"), [15] sensor, [18] percent, [19] state
+//    (0 = discharging, 1 = charging, 2 = full). The dongle requires incrementing sequence numbers in byte 4.
 #include "drivers.h"
 
 #include <algorithm>
@@ -295,6 +299,65 @@ void PollIncott(PollContext& ctx) {
     }
 }
 
+void PollDeluxM800(PollContext& ctx) {
+    static BYTE s_deluxSeq = 0;
+    for (USHORT pid : { (USHORT)0x5B2E, (USHORT)0x5B2F }) {
+        if (ctx.IsClaimed(0x248A, pid)) continue;
+        for (const HidColl* c : ctx.Find(0x248A, pid, [](const HidColl& c) {
+                 return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 33;
+             })) {
+            HidDev d;
+            if (!d.OpenFeatureOnly(*c)) continue;
+            bool receiver = pid == 0x5B2F;
+            std::vector<BYTE> req(c->featLen(), 0);
+            req[0] = 0x0C;
+            req[1] = 0x01;
+            req[2] = 0x20;
+            req[4] = ++s_deluxSeq;
+            if (!d.SetFeature(req)) continue;
+            Sleep(20);
+            std::vector<BYTE> r;
+            if (!d.GetFeature(0x0C, r) || r.size() < 20) continue;
+            if (r[0] != 0x0C || r[2] != 0x20) continue;
+
+            if (receiver && r[6] == 0) {
+                req[4] = ++s_deluxSeq;
+                if (d.SetFeature(req)) {
+                    Sleep(20);
+                    std::vector<BYTE> r2;
+                    if (d.GetFeature(0x0C, r2) && r2.size() >= 20 && r2[0] == 0x0C && r2[2] == 0x20) {
+                        r = std::move(r2);
+                    }
+                }
+            }
+
+            int pct = r[18];
+            if (pct > 100) continue;
+            BYTE st = r[19];
+            DeviceStatus s;
+            s.key = L"delux:m800";
+            s.name = L"Delux M800 Pro";
+            s.kind = DeviceKind::Mouse;
+            s.via = receiver ? L"2.4 GHz receiver" : L"USB cable";
+            s.connected = (r[6] != 0 || pct > 0);
+            if (st == 2) {
+                s.percent = 100;
+                s.charging = true;
+            } else if (st == 1) {
+                s.charging = true;
+                if (s.connected && pct > 0) s.percent = Clamp100(pct);
+            } else if (s.connected && pct > 0) {
+                s.percent = Clamp100(pct);
+            }
+            if (!receiver && s.connected) {
+                ctx.Claim(0x248A, 0x5B2F);
+            }
+            ctx.Add(s, 0x248A, pid);
+            break;
+        }
+    }
+}
+
 }  // namespace
 
 // For `--dump`: the raw input reports each Xenta status collection sends during ~6 s (three frames at the
@@ -333,6 +396,7 @@ std::wstring DumpXentaFrames() {
 void PollMiscMice(PollContext& ctx) {
     PollMotospeed(ctx);
     PollXenta(ctx);
+    PollDeluxM800(ctx);
     PollAjazz(ctx);
     PollAjazzAjSeries(ctx);
     PollAjazzAj139(ctx);
