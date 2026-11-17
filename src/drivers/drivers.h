@@ -67,9 +67,9 @@ void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery r
 void PollAreson(PollContext& ctx);    // Areson 25A7 receivers (Redragon M913 / M915)
 void PollMchose(PollContext& ctx);    // MCHOSE mice (L7 / M7 / A7 / K7 families, VID 5253)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
+void PollFantech(PollContext& ctx);   // Fantech Helios Go XD5 (wired 25A7:FA7B, dongle 25A7:FA7C)
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro, BlackShark V2 Pro (2023)
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
-void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro
 void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
 void PollAtkBitmouse(PollContext& ctx);  // ATK / VXE NK NANO dongle 373B:1216 (before Kysona, same vendor id)
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
