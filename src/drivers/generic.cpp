@@ -71,23 +71,29 @@ std::wstring StripServiceSuffix(std::wstring n) {
     return n;
 }
 
-// Container id of the device an HID interface belongs to, formatted like PollBluetooth's keys ("" if unknown).
+// Container id ("{...}") of the physical device an HID interface belongs to, formatted like
+// PollBluetooth's keys, or "" if unknown. Uses SetupAPI: CM_Get_Device_Interface_PropertyW is
+// missing from older MinGW import libraries.
 std::wstring ContainerOf(const std::wstring& path) {
-    wchar_t inst[MAX_DEVICE_ID_LEN] = {};
-    ULONG size = sizeof(inst);
-    DEVPROPTYPE t;
-    if (CM_Get_Device_Interface_PropertyW(path.c_str(), &DEVPKEY_Device_InstanceId, &t, (PBYTE)inst, &size, 0) != CR_SUCCESS)
-        return L"";
-    DEVINST dn;
+    HDEVINFO di = SetupDiCreateDeviceInfoList(nullptr, nullptr);
+    if (di == INVALID_HANDLE_VALUE) return L"";
+    std::wstring result;
+    SP_DEVICE_INTERFACE_DATA ifd{ sizeof(ifd) };
+    SP_DEVINFO_DATA dd{ sizeof(dd) };
     GUID g{};
-    size = sizeof(g);
-    if (CM_Locate_DevNodeW(&dn, inst, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS ||
-        CM_Get_DevNode_PropertyW(dn, &DEVPKEY_Device_ContainerId, &t, (PBYTE)&g, &size, 0) != CR_SUCCESS)
-        return L"";
-    wchar_t buf[64];
-    StringFromGUID2(g, buf, 64);
-    return buf;
+    DEVPROPTYPE t;
+    if (SetupDiOpenDeviceInterfaceW(di, path.c_str(), 0, &ifd) &&
+        SetupDiGetDeviceInterfaceDetailW(di, &ifd, nullptr, 0, nullptr, &dd) == FALSE && dd.DevInst &&
+        SetupDiGetDevicePropertyW(di, &dd, &DEVPKEY_Device_ContainerId, &t, (PBYTE)&g, sizeof(g), nullptr, 0) &&
+        t == DEVPROP_TYPE_GUID) {
+        wchar_t buf[64];
+        StringFromGUID2(g, buf, 64);
+        result = buf;
+    }
+    SetupDiDestroyDeviceInfoList(di);
+    return result;
 }
+std::wstring HidContainer(const std::wstring& path) { return ContainerOf(path); }
 
 }  // namespace
 
@@ -202,7 +208,19 @@ void PollBluetooth(PollContext& ctx) {
     }
     SetupDiDestroyDeviceInfoList(di);
 
+    // Physical devices a driver above already reported over a HID interface on the Bluetooth link
+    // itself (e.g. Logitech HID++ names the LIFT "Logitech LIFT VERTICAL ERGONOMIC MOUSE" while
+    // Bluetooth calls it "LIFT", so the name check below misses it).
+    std::set<std::wstring> reported;
+    std::map<std::wstring, std::pair<USHORT, USHORT>> hidIds;  // container id -> HID vid/pid on that device
+    for (const auto& c : ctx.colls) {
+        std::wstring cont = HidContainer(c.path);
+        hidIds[cont] = { c.vid, c.pid };
+        if (ctx.IsClaimed(c.vid, c.pid)) reported.insert(cont);
+    }
+
     for (auto& [cid, f] : battery) {
+        if (reported.count(cid)) continue;
         auto mc = containerConn.find(cid);
         if (mc != containerConn.end() ? !mc->second : !f.connected) continue;
         DeviceStatus s;
@@ -222,6 +240,9 @@ void PollBluetooth(PollContext& ctx) {
             auto cat = containerCat.find(cid);
             if (cat != containerCat.end()) s.kind = KindFromCategory(cat->second);
         }
+        // Bluetooth LE devices have no class of device; their HID collections tell a mouse from a keyboard.
+        auto ids = hidIds.find(cid);
+        if (s.kind == DeviceKind::Other && ids != hidIds.end()) s.kind = KindFromCollections(ctx.colls, ids->second.first, ids->second.second);
         if (s.kind == DeviceKind::Other) s.kind = GuessKind(s.name);
         ctx.out.push_back(s);
         ctx.btContainers.insert(cid);
