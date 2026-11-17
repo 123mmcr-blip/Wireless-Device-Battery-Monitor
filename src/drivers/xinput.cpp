@@ -134,18 +134,33 @@ void PollXInput(PollContext& ctx) {
 
     const XInputApi& api = LoadXInput();
     if (!api.battery || !api.state) return;
+    auto query = [&](DWORD user, BYTE type, XINPUT_BATTERY_INFORMATION& bi) {
+        bi = {};
+        return api.battery(user, type, &bi) == ERROR_SUCCESS && bi.BatteryType != BATTERY_TYPE_DISCONNECTED &&
+               bi.BatteryType != BATTERY_TYPE_WIRED;
+    };
     for (DWORD user = 0; user < 4; user++) {
         // The Xbox Wireless adapter answers battery queries for empty slots too (one controller
         // showed up as four "Medium" headsets), so only look at slots with a controller connected.
         XINPUT_STATE state{};
         if (api.state(user, &state) != ERROR_SUCCESS) continue;
+        XINPUT_BATTERY_INFORMATION pad{};
+        const bool hasPad = query(user, BATTERY_DEVTYPE_GAMEPAD, pad);
         for (BYTE type : { (BYTE)BATTERY_DEVTYPE_GAMEPAD, (BYTE)BATTERY_DEVTYPE_HEADSET }) {
             if (type == BATTERY_DEVTYPE_GAMEPAD && (btXbox || precise > 0)) continue;  // already shown precisely
             XINPUT_BATTERY_INFORMATION bi{};
-            if (api.battery(user, type, &bi) != ERROR_SUCCESS) continue;
-            if (bi.BatteryType == BATTERY_TYPE_DISCONNECTED || bi.BatteryType == BATTERY_TYPE_WIRED) continue;
-            // Without a headset plugged in, the headset query can still answer with an unknown type.
-            if (type == BATTERY_DEVTYPE_HEADSET && bi.BatteryType == BATTERY_TYPE_UNKNOWN) continue;
+            if (type == BATTERY_DEVTYPE_GAMEPAD) {
+                if (!hasPad) continue;
+                bi = pad;
+            } else {
+                if (!query(user, type, bi)) continue;
+                // Without a headset plugged in, the headset query can still answer with an unknown type.
+                if (bi.BatteryType == BATTERY_TYPE_UNKNOWN) continue;
+                // Xbox One / Series controllers echo their own battery back for the headset query (the
+                // phantom headsets all read "Medium", same as the controller). Headsets on these
+                // controllers are powered by the controller, so a mirrored answer is not a headset.
+                if (hasPad && bi.BatteryType == pad.BatteryType && bi.BatteryLevel == pad.BatteryLevel) continue;
+            }
             DeviceStatus s;
             s.key = L"xinput:" + std::to_wstring(user) + L":" + std::to_wstring(type);
             s.name = type == BATTERY_DEVTYPE_GAMEPAD ? L"Xbox controller " + std::to_wstring(user + 1) : L"Xbox headset";
