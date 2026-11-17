@@ -19,6 +19,7 @@ Battery levels of your wireless mouse, headset, keyboard and controller, right o
 - **Charging:** a blue ⚡ appears next to the number.
 - **Asleep:** dimmed text means the device is asleep and the last known value is shown.
 - **Theme:** it follows light/dark mode and DPI scaling.
+- **Transparent taskbar themes** (e.g. Windhawk's Taskbar Styler): turn on *Background behind taskbar text* in the menu to keep the text readable over the wallpaper.
 
 **Tray icons:** one icon per device with the number drawn in it, plus a "Low battery" notification at 15%. The app switches to this automatically when the taskbar is vertical or can't be found.
 
