@@ -11,7 +11,7 @@ bool g_light, g_hover;
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{};
-int g_lastW = -1, g_lastDpi = 0;
+int g_lastW = -1, g_lastDpi = 0, g_lastLeft = -1;
 SIZE g_size{};
 
 const wchar_t* kClass = L"WirelessBatteryWidget";
@@ -224,6 +224,33 @@ LRESULT CALLBACK WidgetProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(h, msg, wp, lp);
 }
 
+// Windows 11: detects if the Widgets (weather) button is placed on the right next to the tray.
+static DWORD WinBuild() {
+    static DWORD b = 0;
+    if (!b) {
+        wchar_t s[32] = {};
+        DWORD sz = sizeof(s);
+        if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                         L"CurrentBuildNumber", RRF_RT_REG_SZ, nullptr, s, &sz) == ERROR_SUCCESS) {
+            b = (DWORD)_wtoi(s);
+        }
+    }
+    return b;
+}
+
+bool HasWin11RightWidgets() {
+    if (g_rebar) return false;  // Windows 10 uses ReBarWindow32
+    if (WinBuild() < 22635) return false;  // In older Win11 builds, widgets stayed on the left
+    DWORD al = 1, sz = sizeof(al);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+                 L"TaskbarAl", RRF_RT_REG_DWORD, nullptr, &al, &sz);
+    if (al != 0) return false;  // Centered taskbar: widgets are on the far left
+    DWORD da = 1; sz = sizeof(da);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+                 L"TaskbarDa", RRF_RT_REG_DWORD, nullptr, &da, &sz);
+    return da != 0;  // 1 = Widgets enabled, 0 = disabled
+}
+
 }  // namespace
 
 namespace widget {
@@ -321,9 +348,31 @@ bool Reposition() {
     RECT tr, bar;
     GetWindowRect(tray, &tr);
     GetWindowRect(g_taskbar, &bar);
-    POINT p{ tr.left, bar.top };
+
+    int anchorLeft = tr.left;
+    // Windows 10: News and Interests / Weather sits in ShellFeedsTaskbarViewWindow immediately left of the tray.
+    HWND feeds = FindWindowExW(g_taskbar, nullptr, L"ShellFeedsTaskbarViewWindow", nullptr);
+    if (feeds && IsWindowVisible(feeds)) {
+        RECT fr;
+        GetWindowRect(feeds, &fr);
+        if (fr.left < anchorLeft && fr.right > fr.left) anchorLeft = fr.left;
+    }
+
+    POINT p{ anchorLeft, bar.top };
     ScreenToClient(g_taskbar, &p);
     int left = p.x - g_size.cx - Px(2);
+
+    // Windows 11: When the taskbar is left-aligned, the XAML widgets button abuts the tray on the right.
+    if (HasWin11RightWidgets()) {
+        left -= Px(160);
+    }
+
+    // Optional user override in DPI-independent pixels (e.g. for custom padding).
+    DWORD customOffset = 0, sz = sizeof(customOffset);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset",
+                     RRF_RT_REG_DWORD, nullptr, &customOffset, &sz) == ERROR_SUCCESS) {
+        left -= Px((int)customOffset);
+    }
 
     // Windows 10: Explorer re-expands the task buttons on its own layout passes; narrow them again.
     if (g_rebar && IsWindow(g_rebar)) {
@@ -337,10 +386,11 @@ bool Reposition() {
 
     // Keep us above the taskbar's own content (our sibling windows).
     bool covered = GetWindow(g_wnd, GW_HWNDPREV) != nullptr;
-    if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) && g_lastW == g_size.cx) return true;
+    if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) && g_lastW == g_size.cx && g_lastLeft == left) return true;
     g_lastTray = tr;
     g_lastBar = bar;
     g_lastW = g_size.cx;
+    g_lastLeft = left;
     SetWindowPos(g_wnd, HWND_TOP, left, 0, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     return true;
 }
