@@ -40,10 +40,14 @@
 //    commands are 8-byte feature reports with report id 09. Model check first: SET_FEATURE [09][8F]
 //    (read device info), then GET_FEATURE 09 until it echoes 8F; byte 3 is the model, 18 = W1 Standard,
 //    20 = W1 Freestyle. The Incott models use other codes (1, 2, 3, 6, 8, 9, 14), so a W1 is never read
-//    with the Incott query and vice versa. Status: SET_FEATURE [09][86][00] (read status); the mouse
-//    then pushes input report 09 [09][battery][rate | slot << 4]...; battery bit 7 = charging, low 7
-//    bits = percent. From the Wraith web driver at https://www.w1.software/ (assets/index-*.js:
-//    READ_INIT 0x8F, READ_STATUS 0x86, status input report parsed by its Qr()).
+//    with the Incott query and vice versa. Status: 86 is a per-button read (SET_FEATURE [09][86][button],
+//    the feature reply holds that button's mapping). The mouse pushes its status input report 09
+//    [09][battery][rate | slot << 4]... after the full sweep of 86 over buttons 0, 1, 2, 4, 3, which is
+//    what both vendor clients send (the web driver's triggerStatusRead, and the W1 Service right after
+//    8F); a single 86 (button 0) got no push on the reporter's mouse. Battery bit 7 = charging, low 7
+//    bits = percent. From the Wraith web driver at https://www.w1.software/ (assets/index-*.js: READ_INIT
+//    0x8F, READ_STATUS 0x86, zi() sweep, status input report parsed by its Qr()) and the W1 Service
+//    v0.1.7 binary (8F, 200 ms, 86 sweep, then report-09 reads on the first FF05 collection).
 #include "drivers.h"
 
 #include <algorithm>
@@ -315,22 +319,31 @@ void PollWraithW1(PollContext& ctx) {
                 ins.push_back(std::move(in));
             }
             std::vector<BYTE> r;
-            if (!ins.empty() && d.SetFeature({ 0x09, 0x86, 0x00 })) {
-                Sleep(150);
-                d.GetFeature(0x09, r);  // the web driver reads the 86 echo back too; its content is not used
-                ULONGLONG end = GetTickCount64() + 1000;
-                bool got = false;
-                while (!got && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
-                    for (auto& in : ins) {
-                        if (in->Read(r, 100) >= 2 && r[0] == 0x09 && (r[1] & 0x7F) <= 100) { got = true; break; }
+            bool got = false;
+            if (!ins.empty()) {
+                Sleep(200);  // the W1 Service waits 200 ms after 8F before its next request
+                // Read-only sweep of 86 (per-button read) over buttons 0, 1, 2, 4, 3, as the vendor clients do;
+                // the mouse answers it with the status input report. One retry if nothing arrives.
+                for (int attempt = 0; attempt < 2 && !got; attempt++) {
+                    bool sent = false;
+                    for (BYTE b : { (BYTE)0, (BYTE)1, (BYTE)2, (BYTE)4, (BYTE)3 }) {
+                        if (d.SetFeature({ 0x09, 0x86, b })) sent = true;
+                        Sleep(30);
+                    }
+                    if (!sent) break;
+                    ULONGLONG end = GetTickCount64() + 1000;
+                    while (!got && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
+                        for (auto& in : ins) {
+                            if (in->Read(r, 100) >= 2 && r[0] == 0x09 && (r[1] & 0x7F) <= 100) { got = true; break; }
+                        }
                     }
                 }
-                if (got) {
-                    int pct = r[1] & 0x7F;
-                    s.charging = (r[1] & 0x80) != 0;
-                    s.connected = cable || pct > 0 || s.charging;  // 0 from the dongle: the mouse is off
-                    if (s.connected) s.percent = pct;
-                }
+            }
+            if (got) {
+                int pct = r[1] & 0x7F;
+                s.charging = (r[1] & 0x80) != 0;
+                s.connected = cable || pct > 0 || s.charging;  // 0 from the dongle: the mouse is off
+                if (s.connected) s.percent = pct;
             }
         }
         ctx.Add(s, 0x093A, pid);  // claimed even when asleep, so PollIncott never queries a W1
