@@ -68,3 +68,6 @@ existing code does (4-space indent, 120-column lines).
 Every pull request is scanned by the "PR safety check" for things this app should never do (network
 access, launching programs, reading keyboard/clipboard/screen, startup entries, binaries, build or
 release changes). A flag is not a rejection: just explain the flagged lines in the PR description.
+
+Using AI tools is fine, but please remove `Co-authored-by` lines that credit them (for example
+`Co-authored-by: Claude ...`) from your commit messages. The check fails while they are present.
