@@ -50,6 +50,24 @@ std::wstring StripServiceSuffix(std::wstring n) {
     return n;
 }
 
+// Container id ("{...}") of the physical device a HID interface belongs to, or "" if unknown.
+std::wstring HidContainer(const std::wstring& path) {
+    wchar_t inst[MAX_DEVICE_ID_LEN];
+    ULONG sz = sizeof(inst);
+    DEVPROPTYPE t;
+    DEVINST dn;
+    GUID g;
+    if (CM_Get_Device_Interface_PropertyW(path.c_str(), &DEVPKEY_Device_InstanceId, &t, (PBYTE)inst, &sz, 0) != CR_SUCCESS ||
+        CM_Locate_DevNodeW(&dn, inst, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+        return L"";
+    sz = sizeof(g);
+    if (CM_Get_DevNode_PropertyW(dn, &DEVPKEY_Device_ContainerId, &t, (PBYTE)&g, &sz, 0) != CR_SUCCESS || t != DEVPROP_TYPE_GUID)
+        return L"";
+    wchar_t s[64];
+    StringFromGUID2(g, s, 64);
+    return s;
+}
+
 }  // namespace
 
 void PollGenericHid(PollContext& ctx) {
@@ -158,7 +176,19 @@ void PollBluetooth(PollContext& ctx) {
     }
     SetupDiDestroyDeviceInfoList(di);
 
+    // Physical devices a driver above already reported over a HID interface on the Bluetooth link
+    // itself (e.g. Logitech HID++ names the LIFT "Logitech LIFT VERTICAL ERGONOMIC MOUSE" while
+    // Bluetooth calls it "LIFT", so the name check below misses it).
+    std::set<std::wstring> reported;
+    std::map<std::wstring, std::pair<USHORT, USHORT>> hidIds;  // container id -> HID vid/pid on that device
+    for (const auto& c : ctx.colls) {
+        std::wstring cont = HidContainer(c.path);
+        hidIds[cont] = { c.vid, c.pid };
+        if (ctx.IsClaimed(c.vid, c.pid)) reported.insert(cont);
+    }
+
     for (auto& [cid, f] : battery) {
+        if (reported.count(cid)) continue;
         auto mc = containerConn.find(cid);
         if (mc != containerConn.end() ? !mc->second : !f.connected) continue;
         DeviceStatus s;
@@ -174,6 +204,9 @@ void PollBluetooth(PollContext& ctx) {
         s.percent = f.pct;
         auto cod = containerCod.find(cid);
         s.kind = cod != containerCod.end() ? KindFromClassOfDevice(cod->second) : DeviceKind::Other;
+        // Bluetooth LE devices have no class of device; their HID collections tell a mouse from a keyboard.
+        auto ids = hidIds.find(cid);
+        if (s.kind == DeviceKind::Other && ids != hidIds.end()) s.kind = KindFromCollections(ctx.colls, ids->second.first, ids->second.second);
         if (s.kind == DeviceKind::Other) s.kind = GuessKind(s.name);
         ctx.out.push_back(s);
     }

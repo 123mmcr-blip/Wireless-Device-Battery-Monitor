@@ -218,7 +218,14 @@ void PollLogitech(PollContext& ctx) {
         std::vector<BYTE> p;
         BYTE err = 0;
         std::vector<BYTE> indices;
-        if (!isReceiver && h.Request(0xFF, 0x00, 0x10 | kSwId, { 0, 0, 0x5A }, p, err, false, 400) == 1 && p.size() >= 3 && p[0] >= 2)
+        // A Bluetooth HID path (HOGP service 1812, classic HID 1124) is always a direct link. A sleepy
+        // Bluetooth mouse can miss the 400 ms ping; probing it as a receiver then answers on every
+        // index and lists the same mouse six times.
+        std::wstring path = (longs.empty() ? shorts[0] : longs[0])->path;
+        for (auto& ch : path) ch = towlower(ch);
+        bool bluetooth = path.find(L"{00001812-") != std::wstring::npos || path.find(L"{00001124-") != std::wstring::npos;
+        if (bluetooth ||
+            (!isReceiver && h.Request(0xFF, 0x00, 0x10 | kSwId, { 0, 0, 0x5A }, p, err, false, 400) == 1 && p.size() >= 3 && p[0] >= 2))
             indices = { 0xFF };
         else
             indices = { 1, 2, 3, 4, 5, 6 };
