@@ -32,6 +32,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollCoolerMaster(ctx);
     PollPlayStation(ctx);
     PollGameSir(ctx);
+    PollGameSirCyclone(ctx);
     PollHeadsetControl(ctx);
     PollGenericHid(ctx);
     PollBluetooth(ctx);
