@@ -84,6 +84,7 @@ void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperli
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight, Redragon (Compx)
 void PollHyperX(PollContext& ctx);
+void PollLogitechG435(PollContext& ctx);  // G435 headset on the 046D:0ADF dongle (not HID++)
 void PollLogitech(PollContext& ctx);
 void PollRazer(PollContext& ctx);
 void PollSteelSeries(PollContext& ctx);
