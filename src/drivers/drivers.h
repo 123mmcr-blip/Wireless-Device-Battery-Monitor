@@ -54,6 +54,7 @@ void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
+void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 dongle
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset

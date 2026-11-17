@@ -24,6 +24,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollRongyuan(ctx);
     PollSonyInzone(ctx);
     PollFractal(ctx);
+    PollJabra(ctx);
     PollRog(ctx);
     PollZowie(ctx);
     PollRapoo(ctx);
