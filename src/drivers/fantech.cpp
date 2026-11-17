@@ -2,8 +2,8 @@
 // VID 25A7, wired USB-C pid FA7B, 2.4 GHz dongle pid FA7C. The vendor configuration interface
 // uses 17-byte feature reports with report id 0x08:
 //   [08][cmd][0 x14][checksum], where the sum of all 17 bytes is 0x55 mod 256.
-//   cmd 02 = TellDrvStatus (driver active) - the vendor driver sends this before querying.
-//   cmd 04 = get battery -> reply [5]/[6] (after the command byte) = percent, charging.
+//   cmd 04 = get battery -> reply [6] = percent, [7] = charging.
+// No handshake or configuration command is needed; the mouse answers a plain cmd 04.
 // The feature report and the reply are on different HID collections of interface 1, so the
 // command is written to one handle and all input collections are watched for the answer.
 // A sleeping or switched-off mouse does not answer; the last value is kept (graceSec).
@@ -69,18 +69,8 @@ void Remember(const BatteryReply& c, BatteryReply& found) {
     if (found.pct < 0 || (c.checksumOk && !found.checksumOk)) found = c;
 }
 
-// Sends cmd 0x04 on `cmd`, then watches `readers` for the reply. `handshake` first tells the
-// firmware a driver is present; the vendor driver does this, and some firmware does not
-// answer queries without it.
-bool QueryBattery(HidDev& cmd, const std::vector<HidDev*>& readers, bool handshake, int& pct, bool& charging) {
-    if (handshake) {
-        std::vector<BYTE> hello = MakePacket(0x02);
-        hello[5] = 1;  // TellDrvStatus: active
-        cmd.Flush();
-        cmd.SetFeature(hello);
-        Sleep(20);
-    }
-
+// Sends the read-only cmd 0x04 on `cmd`, then watches `readers` for the reply.
+bool QueryBattery(HidDev& cmd, const std::vector<HidDev*>& readers, int& pct, bool& charging) {
     std::vector<BYTE> req = MakePacket(0x04);
     cmd.Flush();
     if (!cmd.SetFeature(req)) return false;
@@ -142,9 +132,7 @@ void PollFantech(PollContext& ctx) {
 
         int pct = -1;
         bool charging = false;
-        if (!QueryBattery(cmd, readers, false, pct, charging) &&
-            !QueryBattery(cmd, readers, true, pct, charging))
-            continue;
+        if (!QueryBattery(cmd, readers, pct, charging)) continue;
 
         DeviceStatus s;
         s.key = L"fantech:" + Hex4(pid);
