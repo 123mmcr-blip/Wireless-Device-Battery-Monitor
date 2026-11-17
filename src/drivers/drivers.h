@@ -68,7 +68,7 @@ void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice incl. VT1 Pro Max 
 void PollAreson(PollContext& ctx);    // Areson 25A7 receivers (Redragon M913 / M915)
 void PollMchose(PollContext& ctx);    // MCHOSE mice (L7 / M7 / A7 / K7 families, VID 5253)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro / M800 Pro, Ajazz AJ179 and AJ159/AJ-series
-void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V2 HyperSpeed / V2 Pro (2023) / V3 / V3 Pro / V3 X, Barracuda X (2022)
+void PollRazerHeadsets(PollContext& ctx);  // BlackShark V2 HyperSpeed / V2 Pro (2020/2023) / V3 variants, Barracuda X (2022)
 void PollFantech(PollContext& ctx);   // Fantech Helios Go XD5 (wired 25A7:FA7B, dongle 25A7:FA7C)
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
 void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
