@@ -28,7 +28,7 @@ Hover for details. Click for the menu: every device (click one to hide or show i
 
 | Vendor | Devices | How |
 |---|---|---|
-| **Logitech** | Mice and keyboards on Unifying, Bolt, Lightspeed and Nano receivers, over USB or Bluetooth; G headsets (G533, G535, G633/G635/G733/G933/G935, G PRO/PRO X) | HID++ 1.0 / 2.0 with feature discovery: unified battery, battery level, voltage, ADC |
+| **Logitech** | Mice and keyboards on Unifying, Bolt, Lightspeed and Nano receivers, over USB or Bluetooth; G headsets (G533, G535, G633/G635/G733/G933/G935, G PRO/PRO X); G435 on the newer `046D:0ADF` dongle | HID++ 1.0 / 2.0 with feature discovery: unified battery, battery level, voltage, ADC; G435: CRC-16 framed vendor reports, `GET_BATTERY` in mV |
 | **Razer** | Wireless mice, keyboards and dongles; BlackShark V3 / V3 Pro headsets | Razer feature-report protocol; headset envelope protocol (queried every 5 min) |
 | **SteelSeries** | Arctis 1/7/7+/9/Pro/Pro Wireless, Arctis Nova 3P/5/7/7X/7P/Pro Wireless, GameBuds; Aerox 3/5/9 Wireless, Prime Wireless, Rival 3 Wireless (Gen 2), Rival 650, Rival Pro | Vendor HID reports |
 | **Corsair** | Void / Void Pro / Void Elite / HS70 / HS80 wireless; Bragi devices (Virtuoso, Void V2, HS80 MAX, Slipstream mice and keyboards) | Vendor HID reports, Bragi `GET` (read-only) |
@@ -123,6 +123,7 @@ The protocols come from these projects' research:
 - [HeadsetControl](https://github.com/Sapd/HeadsetControl): SteelSeries, Corsair, HyperX and Logitech headsets
 - [OpenRazer](https://github.com/openrazer/openrazer): Razer
 - [Solaar](https://github.com/pwr-Solaar/Solaar) and the Logitech HID++ 2.0 documents: Logitech
+- [g435-battery-percentage](https://github.com/portyporty/g435-battery-percentage) and [logitech-g435-battery](https://github.com/deddroid/logitech-g435-battery): Logitech G435 (`0ADF` dongle)
 - [rivalcfg](https://github.com/flozz/rivalcfg): SteelSeries mice (Rival Pro from its pull request #294)
 - [glorious-indicator](https://github.com/ikajdan/glorious-indicator) and [glorious-ctl](https://github.com/louis4craft/glorious-ctl): Glorious
 - Hitscan's web configurator ([control.hitscan.com](https://control.hitscan.com)): Hitscan
