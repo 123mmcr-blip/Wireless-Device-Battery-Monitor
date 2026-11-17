@@ -79,6 +79,7 @@ void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ1
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro, BlackShark V2 Pro (2023)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V2 HyperSpeed, V2 Pro (2023), V3 / V3 Pro
+void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro, BlackShark V2 Pro (2023), Barracuda X (2022)
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro
 void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
