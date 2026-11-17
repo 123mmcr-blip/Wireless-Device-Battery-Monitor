@@ -55,13 +55,21 @@ bool Arctis9(HidDev& d, USHORT pid, DeviceStatus& s) {
     return true;
 }
 
-// Arctis Pro Wireless: 41 AA -> [0]==02 offline; 40 AA -> [0] level 0..4.
+// Arctis Pro Wireless: 41 AA -> [0]==02 offline (04 online); 40 AA -> [0] level 0..4.
+// HeadsetControl writes 41 AA through hidapi, which treats the first byte as a report ID. That only
+// reaches the base station on Linux; interface 0 does not number its reports (33-byte output report
+// = ID 0 + 32 bytes), so on Windows the command has to go behind a 0 report ID or it never arrives.
+bool ArctisProCmd(HidDev& d, BYTE cmd, std::vector<BYTE>& r) {
+    if (WriteRead(d, { 0x00, cmd, 0xAA }, r) && !r.empty()) return true;
+    return WriteRead(d, { cmd, 0xAA }, r) && !r.empty();  // in case a firmware numbers its reports
+}
+
 bool ArctisProWireless(HidDev& d, USHORT pid, DeviceStatus& s) {
     std::vector<BYTE> r;
-    if (!WriteRead(d, { 0x41, 0xAA }, r) || r.empty()) return false;
+    if (!ArctisProCmd(d, 0x41, r)) return false;
     s = Headset(pid, L"SteelSeries Arctis Pro Wireless");
     s.connected = r[0] != 0x02;
-    if (s.connected && WriteRead(d, { 0x40, 0xAA }, r) && !r.empty()) s.percent = MapTo100(r[0], 0, 4);
+    if (s.connected && ArctisProCmd(d, 0x40, r) && r[0] <= 4) s.percent = MapTo100(r[0], 0, 4);
     return true;
 }
 
