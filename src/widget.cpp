@@ -14,7 +14,7 @@ std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
 IUIAutomationElement* g_widgetsBtn;
-int g_lastW = -1, g_lastDpi = 0;
+int g_lastW = -1, g_lastDpi = 0, g_lastLeft = -1;
 SIZE g_size{};
 
 const wchar_t* kClass = L"WirelessBatteryWidget";
@@ -388,6 +388,13 @@ bool Reposition() {
     // edge, so a window's client-space left edge is its screen-space right edge.
     bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
     int edge = rtl ? tr.right : tr.left;  // screen x we sit next to
+    // Windows 10: News and Interests / Weather sits in ShellFeedsTaskbarViewWindow immediately left of the tray.
+    HWND feeds = FindWindowExW(g_taskbar, nullptr, L"ShellFeedsTaskbarViewWindow", nullptr);
+    if (!rtl && feeds && IsWindowVisible(feeds)) {
+        RECT fr;
+        GetWindowRect(feeds, &fr);
+        if (fr.left < edge && fr.right > fr.left) edge = fr.left;
+    }
     // Step past the Widgets button when it sits where we would go.
     RECT wb = WidgetsButtonRect();
     if (wb.right > wb.left && wb.top < bar.bottom && wb.bottom > bar.top &&
@@ -396,6 +403,14 @@ bool Reposition() {
     POINT p{ edge, bar.top };
     ScreenToClient(g_taskbar, &p);
     int left = p.x - g_size.cx - Px(2);
+
+
+    // Optional user override in DPI-independent pixels (e.g. for custom padding).
+    DWORD customOffset = 0, sz = sizeof(customOffset);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset",
+                     RRF_RT_REG_DWORD, nullptr, &customOffset, &sz) == ERROR_SUCCESS) {
+        left -= Px((int)customOffset);
+    }
 
     // Windows 10: Explorer re-expands the task buttons on its own layout passes; narrow them again.
     if (g_rebar && IsWindow(g_rebar)) {
@@ -410,12 +425,13 @@ bool Reposition() {
     // Keep us above the taskbar's own content (our sibling windows).
     bool covered = GetWindow(g_wnd, GW_HWNDPREV) != nullptr;
     if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) && EqualRect(&wb, &g_lastWidgets) &&
-        g_lastW == g_size.cx)
+        g_lastW == g_size.cx && g_lastLeft == left)
         return true;
     g_lastTray = tr;
     g_lastWidgets = wb;
     g_lastBar = bar;
     g_lastW = g_size.cx;
+    g_lastLeft = left;
     SetWindowPos(g_wnd, HWND_TOP, left, 0, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     return true;
 }
