@@ -394,8 +394,9 @@ bool g_scanned = false, g_sending = false, g_quitOnClose = false;
 std::wstring Text(int id) {
     HWND h = GetDlgItem(g_wnd, id);
     int n = GetWindowTextLengthW(h);
-    std::wstring s(n, 0);
-    GetWindowTextW(h, s.data(), n + 1);
+    std::wstring s((size_t)n + 1, L'\0');
+    int written = GetWindowTextW(h, s.data(), (int)s.size());
+    s.resize((size_t)std::max(0, written));
     while (!s.empty() && iswspace(s.back())) s.pop_back();
     while (!s.empty() && iswspace(s.front())) s.erase(s.begin());
     return s;
