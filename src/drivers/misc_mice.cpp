@@ -35,6 +35,15 @@
 //    are tried last to first. From github.com/OmarK6/Incott-Manager (device.go),
 //    github.com/HeHaoren/incott-mouse-app (docs/protocol.md) and github.com/FelixNg21/MouseBattery
 //    (battery byte layout, verified on a G23 V2 with the 522C dongle).
+//  * Wraith W1 (Standard / Freestyle) on the same PixArt ids 093A:522C / 622C and collection FF05, but its
+//    firmware uses a different command map: on the W1, 89 reads profile settings, not the status. All
+//    commands are 8-byte feature reports with report id 09. Model check first: SET_FEATURE [09][8F]
+//    (read device info), then GET_FEATURE 09 until it echoes 8F; byte 3 is the model, 18 = W1 Standard,
+//    20 = W1 Freestyle. The Incott models use other codes (1, 2, 3, 6, 8, 9, 14), so a W1 is never read
+//    with the Incott query and vice versa. Status: SET_FEATURE [09][86][00] (read status); the mouse
+//    then pushes input report 09 [09][battery][rate | slot << 4]...; battery bit 7 = charging, low 7
+//    bits = percent. From the Wraith web driver at https://www.w1.software/ (assets/index-*.js:
+//    READ_INIT 0x8F, READ_STATUS 0x86, status input report parsed by its Qr()).
 #include "drivers.h"
 
 #include <algorithm>
@@ -260,6 +269,74 @@ void PollAjazzAj139(PollContext& ctx) {
     }
 }
 
+// Wraith W1: see the header. Once a dongle has answered as a W1, it stays one for the rest of the run, so
+// a W1 that is asleep (no device-info reply) is not handed to the Incott driver.
+void PollWraithW1(PollContext& ctx) {
+    static int knownModel[2] = { 0, 0 };  // 522C, 622C: last W1 model code seen (0 = not a W1 yet)
+    for (USHORT pid : { (USHORT)0x522C, (USHORT)0x622C }) {
+        if (ctx.IsClaimed(0x093A, pid)) continue;
+        int& model = knownModel[pid == 0x622C];
+        auto colls = ctx.Find(0x093A, pid, [](const HidColl& c) { return c.page() == 0xFF05 && c.featLen() >= 9; });
+        if (colls.empty()) continue;
+        std::reverse(colls.begin(), colls.end());  // on the cable the first FF05 collection rejects SET_FEATURE
+        HidDev d;
+        int replied = 0;  // model code from the device-info read, -1 = answered but not a W1
+        for (const HidColl* c : colls) {
+            if (!d.OpenFeatureOnly(*c)) continue;
+            if (!d.SetFeature({ 0x09, 0x8F })) { d.Close(); continue; }
+            std::vector<BYTE> r;
+            for (int i = 0; i < 10 && !replied; i++) {
+                Sleep(50);
+                if (!d.GetFeature(0x09, r)) break;
+                if (r.size() >= 4 && r[0] == 0x09 && r[1] == 0x8F) replied = (r[3] == 18 || r[3] == 20) ? r[3] : -1;
+            }
+            if (replied) break;
+            d.Close();
+        }
+        if (replied < 0) { model = 0; continue; }  // another PixArt mouse (Incott): leave it to PollIncott
+        if (replied) model = replied;
+        if (!model) continue;  // no answer and never seen as a W1
+
+        bool cable = pid == 0x622C;
+        DeviceStatus s;
+        s.key = L"wraithw1:" + Hex4(pid);
+        s.name = model == 20 ? L"Wraith W1 Freestyle" : L"Wraith W1";
+        s.kind = DeviceKind::Mouse;
+        s.via = cable ? L"USB cable" : L"2.4 GHz receiver";
+        if (!cable) s.graceSec = 1800;  // keep the last value if a sleeping mouse stops answering
+        s.connected = false;
+        if (d.ok()) {
+            // Listen on every FF05 collection with an input report: the status push may arrive on any of them.
+            std::vector<std::unique_ptr<HidDev>> ins;
+            for (const HidColl* c : ctx.Find(0x093A, pid, [](const HidColl& c) { return c.page() == 0xFF05 && c.inLen() >= 2; })) {
+                auto in = std::make_unique<HidDev>();
+                if (!in->OpenReadOnly(*c)) continue;
+                in->Flush();
+                ins.push_back(std::move(in));
+            }
+            std::vector<BYTE> r;
+            if (!ins.empty() && d.SetFeature({ 0x09, 0x86, 0x00 })) {
+                Sleep(150);
+                d.GetFeature(0x09, r);  // the web driver reads the 86 echo back too; its content is not used
+                ULONGLONG end = GetTickCount64() + 1000;
+                bool got = false;
+                while (!got && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
+                    for (auto& in : ins) {
+                        if (in->Read(r, 100) >= 2 && r[0] == 0x09 && (r[1] & 0x7F) <= 100) { got = true; break; }
+                    }
+                }
+                if (got) {
+                    int pct = r[1] & 0x7F;
+                    s.charging = (r[1] & 0x80) != 0;
+                    s.connected = cable || pct > 0 || s.charging;  // 0 from the dongle: the mouse is off
+                    if (s.connected) s.percent = pct;
+                }
+            }
+        }
+        ctx.Add(s, 0x093A, pid);  // claimed even when asleep, so PollIncott never queries a W1
+    }
+}
+
 void PollIncott(PollContext& ctx) {
     for (USHORT pid : { (USHORT)0x522C, (USHORT)0x622C }) {
         if (ctx.IsClaimed(0x093A, pid)) continue;
@@ -336,5 +413,6 @@ void PollMiscMice(PollContext& ctx) {
     PollAjazz(ctx);
     PollAjazzAjSeries(ctx);
     PollAjazzAj139(ctx);
+    PollWraithW1(ctx);  // before PollIncott: same ids, different commands
     PollIncott(ctx);
 }
