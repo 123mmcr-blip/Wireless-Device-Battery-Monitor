@@ -36,8 +36,9 @@
 //  * Every data and trailer frame is acknowledged by the other side: bytes 2..4 echoed with the
 //    type bits cleared (counter bit kept), byte 5 = sum of bytes 1..4. Unacknowledged frames are
 //    resent by the keyboard every ~100 ms.
-//  * Battery request: message 09 87 00 00 01 00. Reply: 87 00 00 01 00 <state> <level>, state 02
-//    seen on battery (charging value not captured yet). The keyboard also pushes FE 05 <level>.
+//  * Battery request: message 09 87 00 00 01 00. Reply: 87 00 00 01 00 02 <level> <flags>; the 02
+//    is constant (it does not change with charging). The keyboard also pushes FE 05 <level> <flags>
+//    on its own. <flags> is 0x10 while charging on the cable and 0x00 on battery.
 // From a USB capture of AULA Hub (Wireless-Device-Battery-Monitor issue #201); read-only.
 #include "drivers.h"
 
@@ -211,7 +212,7 @@ public:
     }
 
     int level() const { return level_; }
-    int state() const { return state_; }
+    bool charging() const { return flags_ >= 0 && (flags_ & 0x10) != 0; }
 
 private:
     int Remaining() const {
@@ -271,21 +272,22 @@ private:
     void Inspect(const std::vector<BYTE>& r) {
         inReply_ = false;
         if (r[5] == 0x87 && r[11] >= 1 && r[11] <= 100) {  // reply to our request
-            state_ = r[10];
             level_ = r[11];
+            flags_ = r[12];
             inReply_ = true;
         } else if (r[5] == 0xFE && r[6] == 0x05 && r[7] >= 1 && r[7] <= 100 && level_ < 0) {
             level_ = r[7];  // pushed by the keyboard on its own; keep waiting for the real reply
+            flags_ = r[8];
         }
     }
 
     HidDev& d_;
     ULONGLONG end_;
-    int level_ = -1, state_ = -1;
+    int level_ = -1, flags_ = -1;  // flags: the byte after the level, 0x10 while charging
     bool inReply_ = false, replyDone_ = false, ioError_ = false;
 };
 
-bool QueryHeroBattery(HidDev& d, int& level) {
+bool QueryHeroBattery(HidDev& d, int& level, bool& charging) {
     std::vector<BYTE> msg(56, 0);
     msg[0] = 0x09;
     msg[1] = 0x87;  // battery
@@ -295,6 +297,7 @@ bool QueryHeroBattery(HidDev& d, int& level) {
     if (!link.SendMessage(msg)) return false;
     if (!link.WaitForBattery()) return false;
     level = link.level();
+    charging = link.charging();
     return true;
 }
 
@@ -341,13 +344,15 @@ void PollAula(PollContext& ctx) {
             HidDev d;
             if (!d.Open(*c)) continue;
             int level = -1;
-            if (!QueryHeroBattery(d, level)) continue;
+            bool charging = false;
+            if (!QueryHeroBattery(d, level, charging)) continue;
             DeviceStatus s;
             s.key = L"aula:" + Hex4(vid) + L":" + Hex4(pid);
             s.name = L"AULA wireless keyboard";
             s.kind = DeviceKind::Keyboard;
             s.via = L"2.4 GHz receiver";
-            s.percent = level;  // charging state not decoded yet (only 02 = on battery was captured)
+            s.percent = level;
+            s.charging = charging;
             ctx.Add(s, vid, pid);
             break;
         }
