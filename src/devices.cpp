@@ -14,6 +14,11 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
     PollKysona(ctx);
     PollKeychron(ctx);
+    PollSonyInzone(ctx);
+    PollRog(ctx);
+    PollZowie(ctx);
+    PollMiscMice(ctx);
+    PollRazerHeadsets(ctx);  // before the generic Razer driver, which shares the vendor id
     PollHyperX(ctx);
     PollLogitech(ctx);
     PollRazer(ctx);

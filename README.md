@@ -29,7 +29,7 @@ Hover for details. Click for the menu: every device, display mode, *Refresh now*
 | Vendor | Devices | How |
 |---|---|---|
 | **Logitech** | Mice and keyboards on Unifying, Bolt, Lightspeed and Nano receivers, over USB or Bluetooth; G headsets (G533, G535, G633/G635/G733/G933/G935, G PRO/PRO X) | HID++ 1.0 / 2.0 with feature discovery: unified battery, battery level, voltage, ADC |
-| **Razer** | Wireless mice, keyboards and dongles | Razer feature-report protocol (battery and charging) |
+| **Razer** | Wireless mice, keyboards and dongles; BlackShark V3 / V3 Pro headsets | Razer feature-report protocol; headset envelope protocol (queried every 5 min) |
 | **SteelSeries** | Arctis 1/7/7+/9/Pro/Pro Wireless, Arctis Nova 3P/5/7/7X/7P/Pro Wireless, GameBuds; Aerox 3/5/9 Wireless, Prime Wireless, Rival 3 Wireless (Gen 2), Rival 650, Rival Pro | Vendor HID reports |
 | **Corsair** | Void / Void Pro / Void Elite / HS70 / HS80 wireless; Bragi devices (Virtuoso, Void V2, HS80 MAX, Slipstream mice and keyboards) | Vendor HID reports, Bragi `GET` (read-only) |
 | **HyperX** | Cloud III Wireless, Cloud II Wireless (HP and Kingston), Cloud Alpha Wireless, Cloud Alpha 2 Wireless, Cloud Flight | Vendor HID reports |
@@ -39,7 +39,10 @@ Hover for details. Click for the menu: every device, display mode, *Refresh now*
 | **ATK headsets** | ATK N9 Pro | Virtual COM port protocol (the ATK desktop app must be closed) |
 | **G-Wolves** | Fenrir, Fenrir Pro / Max / Asym, HTX, HTS, HSK, HTR, HT-S2, Lycan, WARG, VUK and their 8K dongles | Glorious or Kysona protocol, depending on the model |
 | **Keychron mice** | M4 and other Keychron mice on the 2.4 GHz receiver | Vendor report from Keychron Launcher |
-| **Sony** | DualShock 4, DualSense, DualSense Edge (USB, Bluetooth, wireless adapter) | Input report |
+| **ASUS ROG** | Strix Scope II 96 (RX), Azoth, Falchion keyboards; Keris, Harpe, Gladius, Chakram, Spatha, Pugio, Strix Impact mice; the Omni Receiver | ROG HID battery query |
+| **ZOWIE** | EC1/EC2/EC3-CW and DW series (U2-DW, S2-DW ...) | Community-documented read-only vendor commands |
+| **Motospeed / Delux / Ajazz** | Motospeed X6, Delux M900 Pro, Ajazz AJ179 family | Vendor reports (Delux: passive status broadcasts) |
+| **Sony** | DualShock 4, DualSense, DualSense Edge (USB, Bluetooth, wireless adapter); INZONE H9 II and H5 headsets | Input report; INZONE vendor protocol |
 | **Xbox** | Controllers and headsets on the Xbox Wireless adapter or USB | XInput (coarse levels: Low / Medium / Full) |
 | **Bluetooth** | Anything that shows a battery in *Settings → Bluetooth & devices* (earbuds, headphones, BLE mice and keyboards) | Windows device property |
 | **Generic HID** | Devices reporting the standard HID *Battery Strength* usage | HID usage page 0x06 / 0x85 |
@@ -96,8 +99,6 @@ just lose the extra headsets.
 - **Crowded taskbars:** with a very full centered Windows 11 taskbar, the app buttons can reach the widget. On Windows 10 the task-button area is narrowed automatically.
 - **Sleeping devices:** a device that is asleep may not answer. Its last value stays visible, dimmed. Logitech receivers drop sleeping devices from the link, so their last value is kept for 30 minutes.
 - **Keychron keyboards:** they only report their battery over Bluetooth (shown via the Bluetooth support). Over the 2.4 GHz receiver the firmware does not expose it. Keychron mice are supported.
-- **Zowie (e.g. EC2-CW):** these mice are driverless and only show battery on their own LEDs; the receiver does not report it to the PC.
-- **Razer BlackShark V3 Pro:** its battery protocol is not documented yet. Connected over Bluetooth, Windows reports it and it shows up.
 - **Unknown protocols:** some 2.4 GHz devices use undocumented protocols and are not supported yet. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to help add one.
 
 ## How it works
@@ -120,6 +121,10 @@ The protocols come from these projects' research:
 - ATK's web configurator ([hub.atk.pro](https://hub.atk.pro)): ATK mice and the N9 Pro headset
 - G-Wolves' web driver ([mouse.xyz](https://mouse.xyz)): G-Wolves models and their protocols
 - Keychron Launcher ([launcher.keychron.com](https://launcher.keychron.com)): Keychron mice
+- [peripheral-battery-tray](https://github.com/SteveWang92/peripheral-battery-tray) / [G-Helper](https://github.com/seerge/g-helper): ASUS ROG
+- [zowie-battery](https://github.com/yleshchuk/zowie-battery) and [zowie-battery-tray](https://github.com/IgnacioBarb/zowie-battery-tray): ZOWIE EC-CW and DW
+- [LGSTrayBattery-MotospeedX6](https://github.com/Jacobz888/LGSTrayBattery-MotospeedX6), [omarchy-delux-m900](https://github.com/AeonArcHQ/omarchy-delux-m900), [aj179-linux](https://github.com/Rockeyxx/aj179-linux): Motospeed, Delux, Ajazz
+- OpenRazer PR #2794 and [omarchy-blackshark-v3](https://github.com/ReedME/omarchy-blackshark-v3): BlackShark V3
 - [HyperXWM](https://github.com/Medprj/HyperXWM): HyperX Cloud III Wireless
 - Linux `hid-playstation`: DualShock 4 / DualSense report layout
 
