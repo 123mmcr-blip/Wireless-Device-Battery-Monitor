@@ -9,6 +9,12 @@
 //    command 10 (device info, answered by the receiver): reply [10][00 = ok]..., [4..7] model id,
 //    [12] charging, [13] percent, [14] mouse connected (receiver), [31] = sum([4..30]).
 //    From github.com/Rockeyxx/aj179-linux (docs/PROTOCOL.md).
+//  * AJAZZ AJ-series mice on the SONiX vendor id 3151 (AJ159 PRO / APEX and siblings). The dongle
+//    exposes a 65-byte feature collection on usage page FFFF / usage 02. A SET_FEATURE status poll
+//    (report 0x00, opcode 0xF7, zero payload) brings the 2.4 GHz telemetry link up; ~30 ms later
+//    GET_FEATURE report 0x05 carries the charge in byte 3 (0..100). A frame with a non-zero byte 1
+//    or 2 is transient reconnect garbage and is rejected.
+//    From github.com/Aiacos/ajazz-control-center (docs/protocols/mouse/aj_series.md).
 #include "drivers.h"
 
 #include <algorithm>
@@ -172,10 +178,42 @@ void PollAjazz(PollContext& ctx) {
     }
 }
 
+void PollAjazzAjSeries(PollContext& ctx) {
+    for (auto [vid, pid] : ctx.Products(0x3151)) {
+        for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) {
+                 return c.page() == 0xFFFF && c.usage() == 0x02 && c.featLen() >= 65;
+             })) {
+            HidDev d;
+            if (!d.OpenFeatureOnly(*c)) continue;
+            std::vector<BYTE> req(c->featLen(), 0);
+            req[0] = 0x00;  // unnumbered report
+            req[1] = 0xF7;  // status poll: brings the 2.4 GHz telemetry link up
+            if (!d.SetFeature(req)) continue;
+            Sleep(30);
+            std::vector<BYTE> r;
+            if (!d.GetFeature(0x05, r) || r.size() < 4) continue;
+            if (r[0] != 0x05 || r[1] != 0 || r[2] != 0) continue;  // malformed / reconnect frame
+            int pct = r[3];
+            if (pct > 100) continue;
+            DeviceStatus s;
+            s.key = L"ajazzaj:" + Hex4(vid) + L":" + Hex4(pid);
+            s.name = HidProduct(*c);
+            if (s.name.empty()) s.name = L"AJAZZ mouse";
+            s.kind = DeviceKind::Mouse;
+            s.via = L"2.4 GHz receiver";
+            s.connected = pct > 0;  // 0 means the link is up but the mouse is off
+            if (s.connected) s.percent = pct;
+            ctx.Add(s, vid, pid);
+            break;
+        }
+    }
+}
+
 }  // namespace
 
 void PollMiscMice(PollContext& ctx) {
     PollMotospeed(ctx);
     PollXenta(ctx);
     PollAjazz(ctx);
+    PollAjazzAjSeries(ctx);
 }
