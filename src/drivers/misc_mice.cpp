@@ -15,6 +15,15 @@
 //    GET_FEATURE report 0x05 carries the charge in byte 3 (0..100). A frame with a non-zero byte 1
 //    or 2 is transient reconnect garbage and is rejected.
 //    From github.com/Aiacos/ajazz-control-center (docs/protocols/mouse/aj_series.md).
+//  * Incott G23 V2 / G24 on the PixArt vendor id 093A (522C = 2.4 GHz dongle, 622C = USB cable), vendor
+//    collection FF05:0001. Read-only status query: SET_FEATURE report 09 [09][89][00 x7], then
+//    GET_FEATURE report 09 until [09][89][battery][dpi/rate]...; battery bit 7 = charging, low 7 bits =
+//    percent. The same layout is pushed as input report 09, but only now and then (when the mouse
+//    idles or a setting changes), too rarely for a one-shot poll. A reply with bytes 2 and 3 both 0 is
+//    stale and skipped. On the cable the first FF05 collection rejects SET_FEATURE, so the collections
+//    are tried last to first. From github.com/OmarK6/Incott-Manager (device.go),
+//    github.com/HeHaoren/incott-mouse-app (docs/protocol.md) and github.com/FelixNg21/MouseBattery
+//    (battery byte layout, verified on a G23 V2 with the 522C dongle).
 #include "drivers.h"
 
 #include <algorithm>
@@ -209,6 +218,41 @@ void PollAjazzAjSeries(PollContext& ctx) {
     }
 }
 
+void PollIncott(PollContext& ctx) {
+    for (USHORT pid : { (USHORT)0x522C, (USHORT)0x622C }) {
+        if (ctx.IsClaimed(0x093A, pid)) continue;
+        auto colls = ctx.Find(0x093A, pid, [](const HidColl& c) { return c.page() == 0xFF05 && c.featLen() >= 9; });
+        std::reverse(colls.begin(), colls.end());
+        for (const HidColl* c : colls) {
+            HidDev d;
+            if (!d.OpenFeatureOnly(*c)) continue;
+            if (!d.SetFeature({ 0x09, 0x89 })) continue;
+            std::vector<BYTE> r;
+            bool ok = false;
+            for (int i = 0; i < 10 && !ok; i++) {
+                Sleep(50);
+                if (!d.GetFeature(0x09, r)) break;
+                ok = r.size() >= 4 && r[0] == 0x09 && r[1] == 0x89 && (r[2] | r[3]) != 0;
+            }
+            if (!ok) continue;
+            int pct = r[2] & 0x7F;
+            if (pct > 100) continue;
+            bool cable = pid == 0x622C;
+            DeviceStatus s;
+            s.key = L"incott:" + Hex4(pid);
+            s.name = L"Incott mouse";  // the ids are shared by the G23 V2 and the G24
+            s.kind = DeviceKind::Mouse;
+            s.via = cable ? L"USB cable" : L"2.4 GHz receiver";
+            s.charging = (r[2] & 0x80) != 0;
+            s.connected = cable || pct > 0;  // 0 from the dongle: the mouse is off or out of range
+            if (s.connected) s.percent = pct;
+            if (!cable) s.graceSec = 1800;  // keep the last value if a sleeping mouse stops answering
+            ctx.Add(s, 0x093A, pid);
+            break;
+        }
+    }
+}
+
 }  // namespace
 
 void PollMiscMice(PollContext& ctx) {
@@ -216,4 +260,5 @@ void PollMiscMice(PollContext& ctx) {
     PollXenta(ctx);
     PollAjazz(ctx);
     PollAjazzAjSeries(ctx);
+    PollIncott(ctx);
 }
