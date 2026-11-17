@@ -10,8 +10,8 @@
 // A write with an empty payload is a GET; replies come back as input reports with the plain command.
 //  * ULX dongle 0100 (FF00:0001): output report 04, replies on input report 05.
 //  * SLX dongles 0300 / 0301 (FF00, usage not pinned down): output report 01, replies on input 02.
-//    OpenMouse inferred these report ids from xpanel. DPI and polling-rate replies to wake/all were
-//    captured from an 0300 dongle; the battery replies have not been seen from SLX hardware yet.
+//    OpenMouse inferred these report ids from xpanel; battery readings through them are confirmed on
+//    Starlight X hardware, as on the UltralightX.
 // Only GETs are sent: the read xpanel starts with (ULX lift-off 21, SLX profile roster 57), then
 // wake/all (96), which makes the dongle push its status burst. From that burst:
 //  * 5:  battery voltage, mV u16 LE, mapped with xpanel's calibration curve
