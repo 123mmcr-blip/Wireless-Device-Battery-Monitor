@@ -90,6 +90,9 @@ void PollKysona(PollContext& ctx) {
             // Only the two M913 ids on the Areson vendor id; other Areson mice use other protocols.
             bool areson = vid == 0x25A7;
             if (areson && !IsAresonM913(vid, pid)) continue;
+            // ATK N9 Pro / N9 Ultra headsets speak a serial protocol (atk_serial.cpp); never send
+            // them mouse frames, even when the ATK app holds their port and they stay unclaimed.
+            if (vid == 0x373B && (pid == 0x11CA || pid == 0x11CB || pid == 0x1203 || pid == 0x1204)) continue;
             // Kysona exposes a dedicated 17-byte collection; ATK / VXE receivers put report 08 in a
             // vendor collection that also carries larger reports; the Areson M913 has a 17-byte
             // feature report. The checksummed reply filters out anything that does not speak this protocol.
