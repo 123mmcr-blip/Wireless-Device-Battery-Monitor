@@ -158,6 +158,13 @@ bool HidDev::GetFeature(BYTE reportId, std::vector<BYTE>& out) {
     return HidD_GetFeature(h_, out.data(), (ULONG)out.size()) != FALSE;
 }
 
+bool HidDev::GetInputReport(BYTE reportId, std::vector<BYTE>& out) {
+    if (!ok() || !c_.inLen()) return false;
+    out.assign(c_.inLen(), 0);
+    out[0] = reportId;
+    return HidD_GetInputReport(h_, out.data(), (ULONG)out.size()) != FALSE;
+}
+
 // ---- helpers ----------------------------------------------------------------------------------
 
 std::wstring HidProduct(const HidColl& c) {

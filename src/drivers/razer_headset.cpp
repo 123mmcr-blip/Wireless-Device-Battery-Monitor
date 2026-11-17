@@ -15,8 +15,22 @@
 // Reply: [02].. [12]=cmd echo [13]=01 ACK [14]=len [15..]=data.
 // Protocol from OpenRazer PR #2862 (driver/razerblackshark_driver.c, from a capture of 1532:0555)
 // and HaloBattery providers/blackshark.py.
+//
+// Barracuda X (2022), YS-Tech 2.4 GHz receiver 1532:0550, vendor collection FF00:0001, report id 02.
+// The receiver bridges USB HID to the headset's Airoha chip. Output report (64 bytes):
+// [02][80][len][crc lo][crc hi][payload..], crc = CRC-16/XMODEM over the whole report with the crc bytes zero.
+// After each write the bridge answers a GetInputReport(02) with [02]['O'] (taken) or [02]['F'] (busy).
+// Input reports are [02][len][stream..]; the stream carries frames [50 49][group][..][len lo][len hi]..
+// (10-byte header, payload length in bytes 8-9). Airoha command = [50 41][group][seq][body..].
+// Remote mode (group 0E, body 02 E1 01/00) makes the receiver forward commands to the headset; it is switched
+// on for one query and off again afterwards, like the BlackShark V2 Pro. The headset does not answer when it
+// is off, out of range or in Bluetooth mode. Customer data GET (group 08, body 03 <cmd> 00 00), reply op 01:
+// cmd 21 = battery 0-100, cmd 2A = cable (00 / 01).
+// Protocol from github.com/mehdibouchami/razer-barracuda-x-battery (YS-Tech framing) and
+// github.com/nightdevx/barracuda-x-battery (checked on a 1532:0550 receiver).
 #include "drivers.h"
 
+#include <algorithm>
 #include <map>
 
 namespace {
@@ -116,9 +130,118 @@ void PollBlackSharkV2Pro2023(PollContext& ctx) {
     }
 }
 
+// ---- Barracuda X (2022), YS-Tech receiver 1532:0550 ---------------------------------------------
+
+USHORT Crc16Xmodem(const std::vector<BYTE>& data) {
+    USHORT crc = 0;
+    for (BYTE b : data) {
+        crc ^= (USHORT)(b << 8);
+        for (int i = 0; i < 8; i++) crc = (crc & 0x8000) ? (USHORT)((crc << 1) ^ 0x1021) : (USHORT)(crc << 1);
+    }
+    return crc;
+}
+
+class BarracudaLink {
+public:
+    bool Open(const HidColl& c) { return dev_.Open(c); }
+
+    // Sends one Airoha command [50 41][group][seq][body..]; the sequence number is kept in seq_.
+    bool Command(BYTE group, std::initializer_list<BYTE> body) {
+        seq_ = (BYTE)(seq_ % 127 + 1);
+        std::vector<BYTE> payload = { 0x50, 0x41, group, seq_ };
+        payload.insert(payload.end(), body);
+        std::vector<BYTE> f(64, 0);
+        f[0] = 0x02;
+        f[1] = 0x80;
+        f[2] = (BYTE)payload.size();
+        std::copy(payload.begin(), payload.end(), f.begin() + 5);
+        USHORT crc = Crc16Xmodem(f);
+        f[3] = (BYTE)(crc & 0xFF);
+        f[4] = (BYTE)(crc >> 8);
+        for (int attempt = 0; attempt < 5; attempt++) {
+            if (attempt) Sleep(50);
+            std::vector<BYTE> status;
+            if (!dev_.Write(f) || !dev_.GetInputReport(0x02, status) || status.size() < 2) return false;
+            if (status[1] == 'O') return true;
+            if (status[1] != 'F') return false;  // anything but "taken" / "busy" means the bridge refused it
+        }
+        return false;
+    }
+
+    // Waits for the first reply frame accepted by `match`; unrelated frames (events, other replies) are skipped.
+    template <class Match>
+    bool Await(Match match, int timeoutMs, std::vector<BYTE>& frame) {
+        ULONGLONG end = GetTickCount64() + timeoutMs;
+        for (;;) {
+            while (stream_.size() >= 2) {
+                auto start = std::search(stream_.begin(), stream_.end(), kMagic, kMagic + 2);
+                stream_.erase(stream_.begin(), start);
+                if (stream_.size() < 10) break;
+                size_t len = 10 + (stream_[8] | (stream_[9] << 8));
+                if (stream_.size() < len) break;
+                frame.assign(stream_.begin(), stream_.begin() + len);
+                stream_.erase(stream_.begin(), stream_.begin() + len);
+                if (match(frame)) return true;
+            }
+            int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
+            std::vector<BYTE> r;
+            if (left <= 0 || dev_.Read(r, left) < 2) return false;
+            if (r[0] == 0x02 && (size_t)r[1] + 2 <= r.size()) stream_.insert(stream_.end(), r.begin() + 2, r.begin() + 2 + r[1]);
+        }
+    }
+
+    // Remote mode on/off. Returns true when the headset acknowledged it (status 0).
+    bool RemoteMode(bool on) {
+        std::vector<BYTE> f;
+        if (!Command(0x0E, { 0x02, 0xE1, (BYTE)(on ? 1 : 0) })) return false;
+        BYTE seq = seq_;
+        return Await([seq](const std::vector<BYTE>& r) { return r.size() >= 13 && r[10] == 0x0E && r[11] == (BYTE)(0x80 | seq); }, 800, f) &&
+               f[12] == 0;
+    }
+
+    // Customer-data GET: the first value byte, or -1 when the headset does not answer.
+    int Get(BYTE cmd) {
+        std::vector<BYTE> f;
+        if (!Command(0x08, { 0x03, cmd, 0x00, 0x00 })) return -1;
+        bool ok = Await([cmd](const std::vector<BYTE>& r) { return r.size() >= 13 && r[2] == 0x08 && r[10] == cmd && r[11] == 0x01; }, 1000, f);
+        return (ok && f[12] >= 1 && f.size() >= 14) ? f[13] : -1;
+    }
+
+private:
+    static constexpr BYTE kMagic[2] = { 0x50, 0x49 };
+    HidDev dev_;
+    std::vector<BYTE> stream_;
+    BYTE seq_ = 0;
+};
+
+void PollBarracudaX(PollContext& ctx) {
+    const USHORT pid = 0x0550;
+    if (ctx.IsClaimed(0x1532, pid)) return;
+    auto colls = ctx.Find(0x1532, pid, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.outLen() >= 64 && c.inLen() >= 64; });
+    for (const HidColl* c : colls) {
+        BarracudaLink link;
+        if (!link.Open(*c)) continue;
+        if (!link.RemoteMode(true)) continue;  // receiver without a connected headset (off, out of range, Bluetooth mode)
+        int level = link.Get(0x21);
+        int cable = level >= 0 ? link.Get(0x2A) : -1;
+        link.RemoteMode(false);
+        if (level < 0 || level > 100) continue;
+        DeviceStatus s;
+        s.key = L"barracuda:" + Hex4(pid);
+        s.name = L"Razer Barracuda X (2022)";
+        s.kind = DeviceKind::Headset;
+        s.via = L"2.4 GHz receiver";
+        s.percent = level;
+        s.charging = cable == 1;
+        ctx.Add(s, 0x1532, pid);
+        return;
+    }
+}
+
 }  // namespace
 
 void PollRazerHeadsets(PollContext& ctx) {
+    PollBarracudaX(ctx);
     PollBlackSharkV2Pro2023(ctx);
     for (USHORT pid : { (USHORT)0x0576, (USHORT)0x0577, (USHORT)0x0579, (USHORT)0x057A }) {
         if (ctx.IsClaimed(0x1532, pid)) continue;
