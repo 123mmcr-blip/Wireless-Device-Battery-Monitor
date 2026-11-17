@@ -13,6 +13,7 @@ struct WidgetItem {
     bool charging = false;
     bool dim      = false;  // asleep / stale value
     bool low      = false;
+    bool bluetooth = false;  // picks the Bluetooth icon when the device type is unknown
 };
 
 namespace widget {

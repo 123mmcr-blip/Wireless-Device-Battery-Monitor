@@ -2,7 +2,7 @@
 //  * Motospeed X6 (Realtek VID 0BDA, receivers FFE0 / FFF2, interface 4): output report B5 [06],
 //    reply report B4, byte 20 = level (+128 while charging). The cable (FFF1) reports no battery.
 //    From github.com/Jacobz888/LGSTrayBattery-MotospeedX6.
-//  * Delux M900 Pro and siblings (VID 1D57, receivers FA60 / FA65): no command needed; the receiver
+//  * Xenta receivers (Delux M900 Pro, Attack Shark X6 / R1 / X11 / X3 Max / V3 Pro; VID 1D57): the receiver
 //    broadcasts input report 03 on usage page 000A every ~2 s: [03][model][40][state][percent],
 //    state 2 = full, 3 = charging (percent frozen). From github.com/AeonArcHQ/omarchy-delux-m900.
 //  * Ajazz AJ179 family (VID 249A receiver, 248A cable, interface 2): unnumbered 32-byte report,
@@ -11,6 +11,10 @@
 //    From github.com/Rockeyxx/aj179-linux (docs/PROTOCOL.md).
 #include "drivers.h"
 
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
 
 namespace {
@@ -56,28 +60,82 @@ void PollMotospeed(PollContext& ctx) {
     }
 }
 
-void PollDelux(PollContext& ctx) {
-    for (USHORT pid : { (USHORT)0xFA60, (USHORT)0xFA65 }) {
+// Xenta receiver (1D57:FA60, also FA65; cable FA55 / 2155), used by Delux and Attack Shark mice.
+// The receiver broadcasts [03][model][40][state][level] every ~2 s; nothing is sent to it. The handle
+// stays open between polls so these frames queue up. A reading counts once two frames agree, because
+// every link-up starts with a false 100% (github.com/qu1ncky/BatteryTray, XentaReceiverProvider).
+struct XentaModel { BYTE code; const wchar_t* name; bool tens; };
+const XentaModel kXentaModels[] = {
+    { 0x3D, L"Delux M900 Pro", false },
+    { 0x55, L"Attack Shark X11", false },
+    { 0x4E, L"Attack Shark X3 Max", false },
+    { 0xE5, L"Attack Shark V3 Pro", false },
+    { 0x10, L"Attack Shark X6 / R1", true },  // level reported in tens (0-10)
+};
+
+struct XentaListener {
+    std::unique_ptr<HidDev> dev;
+    std::vector<BYTE> last, prev;  // the two most recent battery frames
+    ULONGLONG lastFrameAt = 0;
+};
+std::map<std::wstring, XentaListener> g_xenta;  // by collection path
+
+void PollXenta(PollContext& ctx) {
+    const USHORT pids[] = { 0xFA60, 0xFA65, 0xFA55, 0x2155 };
+    std::set<std::wstring> present;
+    for (USHORT pid : pids) {
         if (ctx.IsClaimed(0x1D57, pid)) continue;
         for (const HidColl* c : ctx.Find(0x1D57, pid, [](const HidColl& c) { return c.page() == 0x000A && c.inLen() >= 5; })) {
-            HidDev d;
-            if (!d.Open(*c)) continue;
+            present.insert(c->path);
+            XentaListener& l = g_xenta[c->path];
+            bool fresh = !l.dev;
+            if (fresh) {
+                l.dev = std::make_unique<HidDev>();
+                if (!l.dev->Open(*c)) { g_xenta.erase(c->path); continue; }
+            }
+            // Take everything queued since the last poll; a new listener waits for two frames.
+            ULONGLONG until = GetTickCount64() + (fresh ? 5000 : 0);
             std::vector<BYTE> r;
-            // Passive: wait for the receiver's periodic power report (sent every ~2 s).
-            if (!ReadUntil(d, r, 3000, [](const std::vector<BYTE>& r) { return r.size() >= 5 && r[0] == 0x03 && r[2] == 0x40; })) continue;
+            int got = 0;
+            while (true) {
+                int wait = fresh && got < 2 ? (int)std::max<LONGLONG>(1, (LONGLONG)until - (LONGLONG)GetTickCount64()) : 30;
+                if (fresh && got < 2 && (LONGLONG)until - (LONGLONG)GetTickCount64() <= 0) break;
+                if (l.dev->Read(r, wait) < 5) break;
+                if (r[0] != 0x03 || r[2] != 0x40) continue;
+                l.prev = l.last;
+                l.last.assign(r.begin(), r.begin() + 5);
+                l.lastFrameAt = GetTickCount64();
+                got++;
+            }
+            if (l.last.empty() || GetTickCount64() - l.lastFrameAt > 15000) break;  // mouse off: no frames
+            bool cable = pid == 0xFA55 || pid == 0x2155;
+            BYTE code = l.last[1], st = l.last[3], level = l.last[4];
+            const XentaModel* model = nullptr;
+            for (const auto& m : kXentaModels)
+                if (m.code == code) model = &m;
             DeviceStatus s;
-            s.key = L"delux:" + Hex4(pid);
-            s.name = r[1] == 0x3D ? L"Delux M900 Pro" : L"Delux wireless mouse";
+            s.key = L"xenta:" + Hex4(pid);
+            s.name = model ? model->name : L"Wireless mouse";
             s.kind = DeviceKind::Mouse;
-            s.via = L"2.4 GHz receiver";
-            BYTE state = r[3], pct = r[4];
-            if (state == 2) { s.percent = 100; s.charging = true; }
-            else if (state == 3) { s.charging = true; if (pct >= 1 && pct <= 100) s.percent = pct; }
-            else if (pct >= 1 && pct <= 100) s.percent = pct;
+            s.via = cable ? L"USB cable" : L"2.4 GHz receiver";
+            bool agreed = l.prev == l.last;
+            if (cable || st == 0x02 || st == 0x03) {
+                s.charging = true;  // the level is frozen on external power
+                if (st == 0x02 && !cable) s.percent = 100;
+            } else if (agreed) {
+                if (model && model->tens) {
+                    if (level >= 1 && level <= 10) s.percent = level * 10;
+                } else if (st == 0x01 && level >= 1 && level <= 100) {
+                    s.percent = level;
+                }
+            }
+            if (s.percent < 0 && !s.charging) s.asleep = true;  // shown with the last known value
             ctx.Add(s, 0x1D57, pid);
             break;
         }
     }
+    for (auto it = g_xenta.begin(); it != g_xenta.end();)  // forget receivers that were unplugged
+        it = present.count(it->first) ? std::next(it) : g_xenta.erase(it);
 }
 
 void PollAjazz(PollContext& ctx) {
@@ -118,6 +176,6 @@ void PollAjazz(PollContext& ctx) {
 
 void PollMiscMice(PollContext& ctx) {
     PollMotospeed(ctx);
-    PollDelux(ctx);
+    PollXenta(ctx);
     PollAjazz(ctx);
 }

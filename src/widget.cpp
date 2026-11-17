@@ -22,13 +22,13 @@ int Dpi() {
 }
 int Px(int v) { return MulDiv(v, Dpi(), 96); }
 
-wchar_t Glyph(DeviceKind k) {
+wchar_t Glyph(DeviceKind k, bool bluetooth) {
     switch (k) {
         case DeviceKind::Headset:  return 0xE7F6;  // Headphone
         case DeviceKind::Mouse:    return 0xE962;  // Mouse
         case DeviceKind::Keyboard: return 0xE765;  // KeyboardClassic
         case DeviceKind::Gamepad:  return 0xE7FC;  // Game
-        default:                   return 0xE702;  // Bluetooth
+        default:                   return bluetooth ? 0xE702 : 0xE772;  // Bluetooth / Devices
     }
 }
 constexpr wchar_t kBolt = 0xE945;            // LightningBolt
@@ -132,7 +132,7 @@ std::vector<Piece> Layout(int& width) {
         const auto& it = g_items[i];
         int a = it.dim ? 120 : 255;
         Rgb tc = it.low ? red : fg;
-        out.push_back({ RenderMask(std::wstring(1, Glyph(it.kind)), icons), fg, a, Px(5) });
+        out.push_back({ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons), fg, a, Px(5) });
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
         out.push_back({ RenderMask(t, text), tc, a, it.charging ? Px(2) : 0 });
         if (it.charging) out.push_back({ RenderMask(std::wstring(1, kBolt), bolt), charge, a, 0 });

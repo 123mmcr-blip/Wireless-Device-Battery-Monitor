@@ -45,6 +45,7 @@ bool GWolvesIsCable(USHORT pid);
 void PollGlorious(PollContext& ctx);  // also Hitscan
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro headset (virtual COM port)
 void PollKeychron(PollContext& ctx);  // Keychron mice
+void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice

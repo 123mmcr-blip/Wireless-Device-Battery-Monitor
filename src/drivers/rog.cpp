@@ -47,9 +47,6 @@ const Model kModels[] = {
     { 0x1B7A, L"ROG Strix Scope II 96 RX", KB, 2, 2, L"col02", 6, 1 },
     { 0x1B78, L"ROG Strix Scope II 96 RX", KB, 0, 1, nullptr, 6, 1 },
     { 0x1A07, L"ROG Strix Scope RX TKL", KB, 0, -1, nullptr, 6, 1 },
-    // Omni Receiver: whatever keyboard and mouse are paired to it
-    { 0x1ACE, L"ROG keyboard", KB, 2, 2, L"col02", 6, 1 },
-    { 0x1ACE, L"ROG mouse", MS, 3, 2, L"col03", 5, 1 },
     // Mice (Omni = col03 report 03, receiver/wired = interface 0 unnumbered)
     { 0x18E5, L"ROG Chakram", MS, 0, 0, nullptr, 5, 25 },
     { 0x18E3, L"ROG Chakram", MS, 0, 0, nullptr, 5, 25 },
@@ -106,9 +103,9 @@ bool PathHas(const std::wstring& path, const wchar_t* tag) {
 
 enum class Reply { Ok, Asleep, None };
 
-Reply Query(HidDev& d, BYTE rid, BYTE sub, std::vector<BYTE>& reply) {
+Reply Query(HidDev& d, BYTE rid, BYTE cmd, BYTE sub, std::vector<BYTE>& reply) {
     d.Flush();
-    if (!d.Write({ rid, 0x12, sub })) return Reply::None;
+    if (!d.Write({ rid, cmd, sub })) return Reply::None;
     ULONGLONG end = GetTickCount64() + 500;
     std::vector<BYTE> r;
     while ((LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
@@ -117,17 +114,73 @@ Reply Query(HidDev& d, BYTE rid, BYTE sub, std::vector<BYTE>& reply) {
         if (rid == 0) r.insert(r.begin(), 0x00);  // restore the report id slot so offsets match
         if (r.size() < 12) continue;
         if (r[1] == 0xFF && r[2] == 0xAA) return Reply::Asleep;
-        if (r[1] == 0x12 && r[2] == sub) { reply = r; return Reply::Ok; }
+        if (r[1] == cmd && r[2] == sub) { reply = r; return Reply::Ok; }
     }
     return Reply::None;
+}
+
+// Reads one model's battery through an open collection. Returns false if it did not answer.
+bool ReadModel(HidDev& d, const Model& m, DeviceStatus& s) {
+    std::vector<BYTE> r;
+    Reply res = Query(d, m.reportId, 0x12, m.kind == KB ? 0x01 : 0x07, r);
+    if (res == Reply::None) return false;
+    s.key = L"rog:" + Hex4(m.pid) + (m.kind == KB ? L":kb" : L":ms");
+    s.name = m.name;
+    s.kind = m.kind == KB ? DeviceKind::Keyboard : DeviceKind::Mouse;
+    s.via = m.reportId ? L"ROG Omni Receiver" : L"2.4 GHz receiver / USB";
+    if (res == Reply::Asleep) {
+        s.asleep = true;
+    } else if (m.kind == KB) {
+        if (r[m.offset] <= 100) s.percent = r[m.offset];
+        s.charging = r[9] == 1;
+    } else {
+        int v = r[m.offset] * m.scale;
+        if (v > 0 && v <= 100) s.percent = v;
+        else s.asleep = true;  // 0 means unavailable, not empty
+        s.charging = r[10] != 0;
+    }
+    return true;
+}
+
+void AddOnce(PollContext& ctx, std::vector<std::wstring>& seen, const DeviceStatus& s) {
+    for (auto& n : seen)
+        if (n == s.name) return;
+    seen.push_back(s.name);
+    ctx.out.push_back(s);
+}
+
+// ROG Omni Receiver (0B05:1ACE): ask it which devices are paired ([01 A0 00] on col01 lists their
+// product ids in 4-byte slots from byte 5), then read each one on its own channel of the receiver.
+void PollOmni(PollContext& ctx, std::vector<std::wstring>& seen) {
+    if (ctx.IsClaimed(0x0B05, 0x1ACE)) return;
+    auto list = ctx.Find(0x0B05, 0x1ACE, [](const HidColl& c) { return c.iface == 2 && c.outLen() >= 12 && PathHas(c.path, L"col01"); });
+    if (list.empty()) return;
+    HidDev d;
+    std::vector<BYTE> r;
+    if (!d.Open(*list[0]) || Query(d, 0x01, 0xA0, 0x00, r) != Reply::Ok) return;
+    ctx.Claim(0x0B05, 0x1ACE);
+    for (size_t at = 5; at + 1 < r.size(); at += 4) {
+        USHORT pid = (USHORT)(r[at] | (r[at + 1] << 8));
+        if (!pid) break;
+        for (const Model& m : kModels) {
+            if (m.pid != pid || !m.reportId) continue;  // only the Omni-channel entry of that model
+            for (const HidColl* c : ctx.Find(0x0B05, 0x1ACE, [&](const HidColl& c) { return c.iface == 2 && c.outLen() >= 12 && PathHas(c.path, m.col); })) {
+                HidDev dev;
+                DeviceStatus s;
+                if (dev.Open(*c) && ReadModel(dev, m, s)) { AddOnce(ctx, seen, s); break; }
+            }
+            break;
+        }
+    }
 }
 
 }  // namespace
 
 void PollRog(PollContext& ctx) {
     std::vector<std::wstring> seen;  // one entry per device name (wired + receiver both present while charging)
+    PollOmni(ctx, seen);
     for (const Model& m : kModels) {
-        if (ctx.IsClaimed(0x0B05, m.pid) && m.pid != 0x1ACE) continue;
+        if (ctx.IsClaimed(0x0B05, m.pid)) continue;
         auto colls = ctx.Find(0x0B05, m.pid, [&](const HidColl& c) {
             if (c.outLen() < 12 || c.page() < 0xFF00) return false;
             if (m.iface >= 0 && c.iface != m.iface) return false;
@@ -135,32 +188,9 @@ void PollRog(PollContext& ctx) {
         });
         for (const HidColl* c : colls) {
             HidDev d;
-            if (!d.Open(*c)) continue;
-            std::vector<BYTE> r;
-            Reply res = Query(d, m.reportId, m.kind == KB ? 0x01 : 0x07, r);
-            if (res == Reply::None) continue;
             DeviceStatus s;
-            s.key = L"rog:" + Hex4(m.pid) + (m.kind == KB ? L":kb" : L":ms");
-            s.name = m.name;
-            s.kind = m.kind == KB ? DeviceKind::Keyboard : DeviceKind::Mouse;
-            s.via = m.reportId ? L"ROG Omni Receiver" : L"2.4 GHz receiver / USB";
-            if (res == Reply::Asleep) {
-                s.asleep = true;
-            } else if (m.kind == KB) {
-                if (r[m.offset] <= 100) s.percent = r[m.offset];
-                s.charging = r[9] == 1;
-            } else {
-                int v = r[m.offset] * m.scale;
-                if (v > 0 && v <= 100) s.percent = v;
-                else s.asleep = true;  // 0 means unavailable, not empty
-                s.charging = r[10] != 0;
-            }
-            bool dup = false;
-            for (auto& n : seen) dup |= n == s.name;
-            if (!dup) {
-                seen.push_back(s.name);
-                ctx.out.push_back(s);
-            }
+            if (!d.Open(*c) || !ReadModel(d, m, s)) continue;
+            AddOnce(ctx, seen, s);
             ctx.Claim(0x0B05, m.pid);
             break;
         }

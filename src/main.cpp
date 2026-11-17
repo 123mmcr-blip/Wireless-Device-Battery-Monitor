@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,7 @@ constexpr DWORD POLL_INTERVAL_MS = 60 * 1000;
 constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
 
-enum MenuId : UINT { ID_REFRESH = 100, ID_AUTOSTART, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY };
+enum MenuId : UINT { ID_REFRESH = 100, ID_AUTOSTART, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_DEVICE_FIRST = 1000 };
 
 const wchar_t* kAppName = L"Wireless Battery";
 const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -76,6 +77,28 @@ std::wstring ExePath() {
     GetModuleFileNameW(nullptr, p, MAX_PATH);
     return p;
 }
+
+// Devices the user chose to hide (by key), stored as a REG_MULTI_SZ.
+std::set<std::wstring> g_hidden;
+
+void LoadHidden() {
+    DWORD size = 0;
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"HiddenDevices", RRF_RT_REG_MULTI_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS || !size)
+        return;
+    std::vector<wchar_t> buf(size / sizeof(wchar_t) + 1, 0);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"HiddenDevices", RRF_RT_REG_MULTI_SZ, nullptr, buf.data(), &size) != ERROR_SUCCESS)
+        return;
+    for (const wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) g_hidden.insert(p);
+}
+
+void SaveHidden() {
+    std::wstring multi;
+    for (const auto& k : g_hidden) { multi += k; multi.push_back(L'\0'); }
+    multi.push_back(L'\0');
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"HiddenDevices", REG_MULTI_SZ, multi.data(), (DWORD)(multi.size() * sizeof(wchar_t)));
+}
+
+bool IsHidden(const std::wstring& key) { return g_hidden.count(key) != 0; }
 
 bool LoadWidgetMode() {
     DWORD v = 1, sz = sizeof(v);
@@ -286,7 +309,7 @@ void UpdatePlaceholder() {
 
 void ApplyEntry(TrayEntry& e) {
     const auto& s = e.st;
-    bool visible = s.connected && !g_useWidget;
+    bool visible = s.connected && !g_useWidget && !IsHidden(s.key);
     if (!visible) {
         if (e.added) { TrayDelete(e.uid); e.added = false; }
         return;
@@ -327,7 +350,7 @@ void UpdateWidget() {
     if (!g_useWidget) return;
     std::vector<const TrayEntry*> list;
     for (auto& [k, e] : g_entries)
-        if (e.st.connected) list.push_back(&e);
+        if (e.st.connected && !IsHidden(k)) list.push_back(&e);
     std::sort(list.begin(), list.end(), [](const TrayEntry* a, const TrayEntry* b) {
         int ka = KindOrder(a->st.kind), kb = KindOrder(b->st.kind);
         return ka != kb ? ka < kb : a->st.name < b->st.name;
@@ -342,6 +365,7 @@ void UpdateWidget() {
         it.charging = e->st.charging;
         it.dim = e->st.percent < 0;
         it.low = !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
+        it.bluetooth = e->st.via == L"Bluetooth";
         items.push_back(it);
         if (!tip.empty()) tip += L"\n";
         tip += e->st.name + L": " + StatusText(*e);
@@ -424,10 +448,13 @@ void RedrawAll() {
 
 void ShowMenu() {
     HMENU m = CreatePopupMenu();
+    std::vector<std::wstring> keys;  // menu id ID_DEVICE_FIRST + i -> device key
     if (g_entries.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"No devices with battery info found");
+    else AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Click a device to show or hide it");
     for (auto& [k, e] : g_entries) {
         std::wstring line = e.st.name + L":  " + StatusText(e) + L"   [" + e.st.via + L"]";
-        AppendMenuW(m, MF_STRING | MF_GRAYED, 0, line.c_str());
+        AppendMenuW(m, MF_STRING | (IsHidden(k) ? 0 : MF_CHECKED), ID_DEVICE_FIRST + (UINT)keys.size(), line.c_str());
+        keys.push_back(k);
     }
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (g_wantWidget ? MF_CHECKED : 0), ID_MODE_WIDGET, L"Show on the taskbar (icon + percentage)");
@@ -450,6 +477,16 @@ void ShowMenu() {
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
+        default:
+            if (cmd >= ID_DEVICE_FIRST && cmd < ID_DEVICE_FIRST + keys.size()) {
+                const std::wstring& key = keys[cmd - ID_DEVICE_FIRST];
+                if (!g_hidden.erase(key)) g_hidden.insert(key);
+                SaveHidden();
+                auto it = g_entries.find(key);
+                if (it != g_entries.end()) ApplyEntry(it->second);
+                UpdatePlaceholder();
+                UpdateWidget();
+            }
     }
 }
 
@@ -596,6 +633,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_refreshEvt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_stopEvt = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_wantWidget = LoadWidgetMode();
+    LoadHidden();
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);

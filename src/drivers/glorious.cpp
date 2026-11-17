@@ -71,8 +71,20 @@ const wchar_t* GloriousName(USHORT pid) {
         case 0x2025: case 0x2014: return L"Glorious Model D- Wireless";
         case 0x2033: return L"Glorious Model O 2 Wireless";
         case 0x2034: case 0x2036: case 0x201A: return L"Glorious Model D 2 PRO";
-        default: return L"Glorious wireless mouse";
+        default: return nullptr;  // another brand on the same Sinowealth chip (e.g. Redragon keyboards)
     }
+}
+
+// 258A is Sinowealth's vendor id, shared by many brands. For a product we do not know, use the
+// device's own name and work out whether it is a keyboard or a mouse instead of assuming a mouse.
+DeviceKind SinowealthKind(const std::vector<HidColl>& all, USHORT vid, USHORT pid, const std::wstring& name) {
+    DeviceKind k = GuessKind(name);
+    if (k != DeviceKind::Other) return k;
+    int keyboards = 0;
+    for (const auto& c : all)
+        if (c.vid == vid && c.pid == pid && c.page() == 0x01 && c.usage() == 0x06) keyboards++;
+    if (keyboards >= 2) return DeviceKind::Keyboard;  // keyboards expose boot + NKRO keyboard collections
+    return KindFromCollections(all, vid, pid);
 }
 bool GloriousCable(USHORT pid) { return pid == 0x2011 || pid == 0x2012 || pid == 0x2013 || pid == 0x2014 || pid == 0x201A; }
 
@@ -115,8 +127,15 @@ void PollGlorious(PollContext& ctx) {
                 if (!ok) continue;
                 DeviceStatus s;
                 s.key = v.keyPrefix + Hex4(pid);
-                s.name = v.name(pid);
-                s.kind = DeviceKind::Mouse;
+                const wchar_t* known = v.name(pid);
+                if (known) {
+                    s.name = known;
+                    s.kind = DeviceKind::Mouse;
+                } else {
+                    s.name = HidProduct(*c);
+                    if (s.name.empty()) s.name = L"Wireless device";
+                    s.kind = SinowealthKind(ctx.colls, vid, pid, s.name);
+                }
                 s.via = v.isCable(pid) ? L"USB cable" : L"2.4 GHz receiver";
                 s.charging = v.isCable(pid) || r[7] == 0x01;
                 if (r[1] == 0xA1 && r[8] <= 100) s.percent = Clamp100(r[8] ? r[8] : 1);
