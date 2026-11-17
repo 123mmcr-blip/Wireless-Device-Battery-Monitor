@@ -51,6 +51,7 @@ void PollKeychron(PollContext& ctx);  // Keychron mice, Nape Pro trackball (Link
 void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99, MCHOSE K99 V2 etc. keyboards (before Kysona, same vendor id)
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro headset (virtual COM port)
 void PollKeychron(PollContext& ctx);  // Keychron mice
+void PollKeychron(PollContext& ctx);  // Keychron mice (incl. 4K Link / 8K receivers), Nape Pro trackball (Link-KM receiver)
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0
 void PollEndgame(PollContext& ctx);   // Endgame Gear 4K mice (OP1w 4k, XM2w 4k) on the 4K dongle
 void PollVaxee(PollContext& ctx);     // VAXEE 4K receiver / NP-01S V2 cable, read-only battery commands
