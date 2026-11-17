@@ -55,6 +55,8 @@ void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery r
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro, BlackShark V2 Pro (2023)
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
+void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro
+void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight, Redragon (incl. dual-mode M913)
 void PollHyperX(PollContext& ctx);
 void PollLogitech(PollContext& ctx);
 void PollRazer(PollContext& ctx);
