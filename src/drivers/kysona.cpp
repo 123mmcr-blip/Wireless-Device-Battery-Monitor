@@ -17,7 +17,8 @@ namespace {
 bool IsRedragon(USHORT vid, USHORT pid) { return vid == 0x3554 && (pid == 0xF55D || pid == 0xF5D5 || pid == 0xF55E); }
 
 bool IsCable(USHORT vid, USHORT pid) {
-    return (vid == 0x33E4 && GWolvesIsCable(pid)) || (vid == 0x3554 && pid == 0xF55E);
+    bool hecate_cable = vid == 0x35BB && (pid == 0xD3FA || pid == 0xD3FC || pid == 0xD3FD);
+    return (vid == 0x33E4 && GWolvesIsCable(pid)) || (vid == 0x3554 && pid == 0xF55E) || hecate_cable;
 }
 
 BYTE Checksum(const BYTE* b) {
@@ -50,6 +51,7 @@ std::wstring CleanName(std::wstring n, USHORT vid, USHORT pid) {
         if (n.size() > l && n.compare(n.size() - l, l, suffix) == 0) n = n.substr(0, n.size() - l);
     }
     if (vid == 0x3770) return L"Hitscan Hyperlight";  // the receiver only calls itself "Hitscan USB Receiver"
+    if (vid == 0x35BB) return L"HECATE mouse";
     if (n.empty()) n = vid == 0x373B ? L"ATK wireless mouse" : L"Wireless mouse";
     return n;
 }
@@ -58,7 +60,7 @@ std::wstring CleanName(std::wstring n, USHORT vid, USHORT pid) {
 
 void PollKysona(PollContext& ctx) {
     std::vector<std::wstring> seenNames;
-    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B, (USHORT)0x3770, (USHORT)0x33E4, (USHORT)0x3710 }) {
+    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B, (USHORT)0x3770, (USHORT)0x33E4, (USHORT)0x3710, (USHORT)0x35BB }) {
         for (auto [vid, pid] : ctx.Products(vendor)) {
             // Kysona exposes a dedicated 17-byte collection; ATK / VXE receivers put report 08 in a
             // vendor collection that also carries larger reports. The checksummed reply filters out
