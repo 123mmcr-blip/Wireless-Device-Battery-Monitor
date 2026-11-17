@@ -3,7 +3,7 @@
 //    (0 offline, 1-2 ok, 4-5 charging). From github.com/Sapd/HeadsetControl.
 //  * "Bragi" devices (Virtuoso, Void V2, HS80 MAX, Slipstream mice/keyboards): wire bytes
 //    02 <target> 02 <property> = GET; reply [1] source, [2] 02, [3] status (0 ok), [4..7] value LE.
-//    Property 0F = battery (0..1000), 10 = charge state (1 charging, 3 full). Target 08 is the device
+//    Property 0F = battery (0..1000), 10 = charge state (1 charging, 3 full), 12 = product id (as in OpenRGB). Target 08 is the device
 //    or receiver itself, 09+ are devices paired to a receiver. GET is read-only; we never switch the
 //    device into software mode.
 #include "drivers.h"
@@ -121,6 +121,13 @@ void PollCorsair(PollContext& ctx) {
                 s.key = L"corsair:" + Hex4(pid) + L":" + std::to_wstring(target);
                 s.name = product.empty() ? L"Corsair wireless device" : product;
                 s.kind = GuessKind(s.name);
+                // A receiver names itself, not the device behind it, and has mouse collections of its own.
+                // Property 12 is the paired device's product id (read-only); Corsair headsets use 0Axx.
+                unsigned devPid = 0;
+                if (target != 0x08 && b.Get(target, 0x12, devPid) && (devPid >> 8) == 0x0A) {
+                    s.kind = DeviceKind::Headset;
+                    if (product.find(L"Receiver") != std::wstring::npos) s.name = L"Corsair wireless headset";
+                }
                 if (s.kind == DeviceKind::Other) s.kind = KindFromCollections(ctx.colls, vid, pid);
                 s.via = target == 0x08 ? L"USB / Bluetooth" : L"Corsair receiver";
                 s.percent = Clamp100((int)(level + 5) / 10);

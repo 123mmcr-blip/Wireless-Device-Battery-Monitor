@@ -23,7 +23,7 @@ const USHORT kVid = 0x3537;
 
 // 1098: receiver with a controller linked (it re-enumerates under another id when the pad is off).
 // 100F: Nova 2 Lite on a cable.
-bool IsNova(USHORT pid) { return pid == 0x1098 || pid == 0x100F; }
+bool IsNova(USHORT pid) { return pid == 0x1098 || pid == 0x100F || pid == 0x1040; }  // 1040: Nova Lite 2 receiver (issue #47, same FF7A collection; untested)
 // 100B: Cyclone 2 with the controller linked or on a cable (the receiver is 0575 while no pad is on).
 bool IsCyclone2(USHORT pid) { return pid == 0x100B; }
 
@@ -50,7 +50,7 @@ void PollGameSir(PollContext& ctx) {
             s.key = L"gamesir:" + Hex4(pid);
             s.name = L"GameSir Nova";
             s.kind = DeviceKind::Gamepad;
-            s.via = pid == 0x1098 ? L"2.4 GHz receiver" : L"USB cable";
+            s.via = pid == 0x100F ? L"USB cable" : L"2.4 GHz receiver";
             if (r[18] == 0xFF) s.charging = true;  // percent stays -1: the last known value is kept
             else s.percent = r[18];
             ctx.Add(s, vid, pid);

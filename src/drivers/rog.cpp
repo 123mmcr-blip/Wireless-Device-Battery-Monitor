@@ -8,6 +8,8 @@
 // MIT, itself based on G-Helper) and github.com/1gcat/BatteryTool.
 #include "drivers.h"
 
+#include <set>
+
 #include <cwctype>
 
 namespace {
@@ -251,6 +253,11 @@ void PollRog(PollContext& ctx) {
             HidDev d;
             DeviceStatus s;
             if (!d.Open(*c) || !ReadModel(d, m, s)) continue;
+            // A receiver channel (e.g. the SpeedNova 8K receiver 1AD0) answers "asleep" when nothing is
+            // paired to it too, so a model is only shown there once it has really answered (issue #140).
+            static std::set<USHORT> awake;
+            if (m.reportId && s.asleep && !awake.count(m.pid)) continue;
+            if (m.reportId && !s.asleep) awake.insert(m.pid);
             AddOnce(ctx, seen, s);
             ctx.Claim(0x0B05, m.pid);
             break;
