@@ -54,7 +54,7 @@ void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice
 void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery reports)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro
-void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710:3406 / 5403 (before Kysona, same vendor id)
+void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
 void PollHyperX(PollContext& ctx);
 void PollLogitech(PollContext& ctx);
