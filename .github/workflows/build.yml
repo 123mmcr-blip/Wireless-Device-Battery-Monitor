@@ -24,6 +24,10 @@ jobs:
         shell: msys2 {0}
         run: make
 
+      - name: Test Rapoo protocol and driver
+        shell: msys2 {0}
+        run: make test
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y

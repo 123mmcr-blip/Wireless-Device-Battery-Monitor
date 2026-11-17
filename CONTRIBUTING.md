@@ -53,6 +53,9 @@ Please open an issue with:
 - **Exact matching:** only talk to devices you recognise by vendor and product ID, or by a
   vendor-specific collection that is unique to the protocol.
 - **Always time out:** a missing device must not stall the poll for more than about a second.
+  Passive protocols may need longer to cover a documented push interval (for example, Delux and
+  Rapoo). Keep a single absolute deadline of at most 4 seconds per matching collection, do not
+  restart it for unrelated reports, and document why the exception is needed.
 - **Credit sources:** cite where the protocol comes from in a comment at the top of the file.
 
 ## Code style

@@ -23,4 +23,11 @@ build/app_res.o: res/app.rc res/app.manifest res/app.ico
 clean:
 	rm -rf build WirelessBattery.exe
 
-.PHONY: clean
+test:
+	@mkdir -p build
+	$(CXX) -std=c++17 -O2 -Wall tests/rapoo_protocol_test.cpp -o build/rapoo_protocol_test.exe
+	./build/rapoo_protocol_test.exe
+	$(CXX) $(CXXFLAGS) tests/rapoo_driver_test.cpp src/drivers/rapoo.cpp -o build/rapoo_driver_test.exe
+	./build/rapoo_driver_test.exe
+
+.PHONY: clean test
