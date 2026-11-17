@@ -85,6 +85,7 @@ void PollSteamController(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
 void PollFlydigi(PollContext& ctx);    // Vader 5 Pro vendor battery channel
 void PollGameSirCyclone(PollContext& ctx);  // Cyclone 2 (XInput mode)
+void PollAirPods(PollContext& ctx);   // Apple AirPods / Beats (BLE proximity broadcasts)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);
