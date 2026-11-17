@@ -30,6 +30,7 @@ constexpr UINT PLACEHOLDER_ID = 1;
 
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
+    ID_BRAND_COLORS,
     ID_DEVICE_FIRST = 1000
 };
 enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_STRIDE = 4 };
@@ -49,6 +50,7 @@ bool g_wantWidget = true;      // user's choice: taskbar widget (default) or tra
 bool g_useWidget = false;      // what is actually shown right now
 bool g_hideLastKnown = false;  // hide (last known) / asleep devices from taskbar and tray
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
+bool g_brandColors = true;  // known brands get their color (Razer green, Logitech blue, ...)
 
 struct TrayEntry {
     UINT uid = 0;
@@ -161,6 +163,8 @@ bool LoadHideLastKnown() { return LoadBoolSetting(L"HideLastKnownDevices", false
 void SaveHideLastKnown(bool on) { SaveBoolSetting(L"HideLastKnownDevices", on); }
 bool LoadWidgetBackground() { return LoadBoolSetting(L"WidgetBackground", false); }
 void SaveWidgetBackground(bool on) { SaveBoolSetting(L"WidgetBackground", on); }
+bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", true); }
+void SaveBrandColors(bool on) { SaveBoolSetting(L"BrandColors", on); }
 
 bool AutostartEnabled() {
     wchar_t buf[MAX_PATH * 2];
@@ -281,11 +285,15 @@ HICON RenderIcon(const std::wstring& text, int barPct, Rgb textColor, Rgb barCol
 
 Rgb Foreground() { return g_lightTaskbar ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 }; }
 
-HICON IconFor(int pct, bool charging, bool dim) {
+Accent AccentFor(const DeviceStatus& s) { return g_brandColors ? BrandOf(s) : Accent::None; }
+
+HICON IconFor(int pct, bool charging, bool dim, Accent accent) {
     Rgb fg = Foreground();
+    BrandColor bc = AccentColor(accent, g_lightTaskbar);
     Rgb bar = charging        ? Rgb{ 0, 170, 255 }
             : pct <= LOW_BATTERY ? Rgb{ 232, 32, 48 }
             : pct <= 30       ? Rgb{ 255, 150, 0 }
+            : accent != Accent::None ? Rgb{ bc.r, bc.g, bc.b }
                               : Rgb{ 30, 190, 90 };
     Rgb text = (!charging && pct >= 0 && pct <= LOW_BATTERY) ? Rgb{ 240, 50, 60 } : fg;
     std::wstring t = pct < 0 ? L"?" : std::to_wstring(pct);
@@ -368,10 +376,12 @@ void ApplyEntry(TrayEntry& e) {
     }
     int shown = s.percent >= 0 ? s.percent : e.lastPct;
     bool dim = s.percent < 0;
-    std::wstring sig = std::to_wstring(shown) + (s.charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k");
+    Accent accent = AccentFor(s);
+    std::wstring sig = std::to_wstring(shown) + (s.charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k") +
+                       L"a" + std::to_wstring((int)accent);
     if (sig != e.iconSig || !e.icon) {
         if (e.icon) DestroyIcon(e.icon);
-        e.icon = IconFor(shown, s.charging, dim);
+        e.icon = IconFor(shown, s.charging, dim, accent);
         e.iconSig = sig;
     }
     std::wstring tip = s.name + L"\n" + StatusText(e);
@@ -435,6 +445,7 @@ void UpdateWidget() {
         it.dim = e->st.percent < 0;
         it.low = !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
+        it.accent = AccentFor(e->st);
         items.push_back(it);
         if (!tip.empty()) tip += L"\n";
         tip += e->st.name + L": " + StatusText(*e);
@@ -529,6 +540,13 @@ void RedrawAll() {
     UpdatePlaceholder();
 }
 
+void SetBrandColors(bool on) {
+    g_brandColors = on;
+    SaveBrandColors(on);
+    RedrawAll();
+    UpdateWidget();
+}
+
 void ToggleHidden(const std::wstring& key) {
     if (!g_hidden.erase(key)) g_hidden.insert(key);
     SaveHidden();
@@ -585,6 +603,7 @@ void ShowMenu() {
     CheckMenuRadioItem(m, ID_MODE_WIDGET, ID_MODE_TRAY, g_wantWidget ? ID_MODE_WIDGET : ID_MODE_TRAY, MF_BYCOMMAND);
     UINT bgFlags = MF_STRING | (g_widgetBackground ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
     AppendMenuW(m, bgFlags, ID_WIDGET_BACKGROUND, L"Background behind taskbar text (for transparent taskbars)");
+    AppendMenuW(m, MF_STRING | (g_brandColors ? MF_CHECKED : 0), ID_BRAND_COLORS, L"Brand colors (Razer green, Logitech blue, ...)");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_REFRESH, L"Refresh now");
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), ID_AUTOSTART, L"Start with Windows");
@@ -603,6 +622,7 @@ void ShowMenu() {
         case ID_AUTOSTART: SetAutostart(!AutostartEnabled()); break;
         case ID_HIDE_LAST_KNOWN: SetHideLastKnown(!g_hideLastKnown); break;
         case ID_WIDGET_BACKGROUND: SetWidgetBackground(!g_widgetBackground); break;
+        case ID_BRAND_COLORS: SetBrandColors(!g_brandColors); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
@@ -622,9 +642,46 @@ void ShowMenu() {
 
 // ---- worker thread ----------------------------------------------------------------------------
 
+// `--demo`: one sample device of every brand instead of real ones, for screenshots and for checking the
+// brand colors without owning the hardware. Keys, vendor ids and names are mixed on purpose, so every way
+// of recognising a brand gets used.
+bool g_demo = false;
+
+std::vector<DeviceStatus> DemoDevices() {
+    auto make = [](const wchar_t* key, const wchar_t* name, DeviceKind kind, int pct, unsigned short vid, bool charging) {
+        DeviceStatus s;
+        s.key = key;
+        s.name = name;
+        s.kind = kind;
+        s.percent = pct;
+        s.vid = vid;
+        s.charging = charging;
+        s.via = L"demo";
+        return s;
+    };
+    return {
+        make(L"razer:demo", L"Razer DeathAdder V3 Pro", DeviceKind::Mouse, 78, 0x1532, false),
+        make(L"demo:logi", L"Logitech G PRO X 2 LIGHTSPEED", DeviceKind::Headset, 64, 0x046D, false),
+        make(L"steelseries:demo", L"SteelSeries Arctis Nova 7", DeviceKind::Headset, 55, 0, false),
+        make(L"hsc:1b1c:0a6b", L"Corsair HS80 RGB Wireless", DeviceKind::Headset, 81, 0x1B1C, false),
+        make(L"hyperx:demo", L"HyperX Cloud III Wireless", DeviceKind::Headset, 47, 0, false),
+        make(L"rog:demo", L"ROG Harpe Ace", DeviceKind::Mouse, 90, 0, false),
+        make(L"zowie:demo", L"ZOWIE EC2-CW", DeviceKind::Mouse, 66, 0x04A5, false),
+        make(L"bt:demo-ps", L"Wireless Controller", DeviceKind::Gamepad, 38, 0x054C, false),
+        make(L"xbox:demo", L"Xbox Wireless Controller", DeviceKind::Gamepad, 72, 0x045E, false),
+        make(L"bt:demo-buds", L"Galaxy Buds3 Pro", DeviceKind::Headset, 59, 0, false),
+        make(L"airpods:demo", L"AirPods Pro", DeviceKind::Headset, 85, 0, false),
+        make(L"jabra:demo", L"Jabra Evolve2 65", DeviceKind::Headset, 23, 0x0B0E, false),
+        make(L"jbl:demo", L"JBL Quantum 910", DeviceKind::Headset, 70, 0x0ECB, false),
+        make(L"coolermaster:demo", L"Cooler Master MM712", DeviceKind::Mouse, 12, 0x2516, false),
+        make(L"steam:demo", L"Steam Controller", DeviceKind::Gamepad, 50, 0x28DE, true),
+        make(L"bt:demo-plain", L"Bluetooth Headphones", DeviceKind::Headset, 100, 0, false),
+    };
+}
+
 DWORD WINAPI Worker(LPVOID) {
     for (;;) {
-        auto* v = new std::vector<DeviceStatus>(PollAllDevices());
+        auto* v = new std::vector<DeviceStatus>(g_demo ? DemoDevices() : PollAllDevices());
         if (!PostMessageW(g_hwnd, WM_RESULTS, 0, (LPARAM)v)) delete v;
         HANDLE hs[2] = { g_stopEvt, g_refreshEvt };
         if (WaitForMultipleObjects(2, hs, FALSE, POLL_INTERVAL_MS) == WAIT_OBJECT_0) return 0;
@@ -735,7 +792,9 @@ int ListToConsole(bool dump) {
     auto list = PollAllDevices();
     if (list.empty()) write(L"No devices with battery info found.\n");
     for (auto& s : list) {
-        std::wstring line = s.name + L"  [" + s.via + L"]  ";
+        Accent accent = BrandOf(s);
+        std::wstring line = s.name + L"  [" + s.via + L"]  " +
+                            (accent != Accent::None ? L"{" + std::wstring(StyleOf(accent).name) + L"}  " : L"");
         if (!s.connected) line += L"off / not connected";
         else if (s.asleep) line += L"asleep";
         else if (!s.levelText.empty()) line += s.levelText;
@@ -772,6 +831,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
         return 0;
     }
     g_inst = inst;
+    g_demo = cmdLine && wcsstr(cmdLine, L"--demo");
 
     HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\WirelessBatteryTray");
     if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
@@ -799,6 +859,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_wantWidget = LoadWidgetMode();
     g_hideLastKnown = LoadHideLastKnown();
     g_widgetBackground = LoadWidgetBackground();
+    g_brandColors = LoadBrandColors();
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
     LoadHidden();
     LoadOrder();

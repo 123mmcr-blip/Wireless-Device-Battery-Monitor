@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include "brands.h"
 #include "devices.h"
 
 struct WidgetItem {
@@ -14,6 +15,7 @@ struct WidgetItem {
     bool dim      = false;  // asleep / stale value
     bool low      = false;
     bool bluetooth = false;  // picks the Bluetooth icon when the device type is unknown
+    Accent accent  = Accent::None;  // brand color for the icon, its glow and the level bar
 };
 
 namespace widget {

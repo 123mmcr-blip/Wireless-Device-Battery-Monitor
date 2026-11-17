@@ -219,7 +219,42 @@ struct Canvas {
     }
 };
 
-struct Piece { Mask m; Rgb color; int alpha; int gapAfter; };
+// Soft glow around a glyph, like a lit RGB device: the coverage mask padded by r pixels, box-blurred
+// twice and brightened so a thin icon outline still gives a visible glow.
+Mask Halo(const Mask& m, int r) {
+    Mask g;
+    g.w = m.w + 2 * r;
+    g.h = m.h + 2 * r;
+    std::vector<int> a((size_t)g.w * g.h, 0), tmp(a.size(), 0);
+    for (int y = 0; y < m.h; y++)
+        for (int x = 0; x < m.w; x++) a[(y + r) * g.w + x + r] = m.a[y * m.w + x];
+    int n = 2 * r + 1;
+    for (int pass = 0; pass < 2; pass++) {
+        for (int y = 0; y < g.h; y++)
+            for (int x = 0; x < g.w; x++) {
+                int s = 0;
+                for (int k = -r; k <= r; k++) if (x + k >= 0 && x + k < g.w) s += a[y * g.w + x + k];
+                tmp[y * g.w + x] = s / n;
+            }
+        for (int y = 0; y < g.h; y++)
+            for (int x = 0; x < g.w; x++) {
+                int s = 0;
+                for (int k = -r; k <= r; k++) if (y + k >= 0 && y + k < g.h) s += tmp[(y + k) * g.w + x];
+                a[y * g.w + x] = s / n;
+            }
+    }
+    g.a.resize(a.size());
+    for (size_t i = 0; i < a.size(); i++) g.a[i] = (BYTE)std::min(255, a[i] * 3);
+    return g;
+}
+
+struct Piece {
+    Mask m; Rgb color; int alpha; int gapAfter;
+    int barPct = -1;  // >= 0: thin level bar under the text (branded devices)
+    Rgb barColor{};
+    Mask halo;        // glow drawn behind the glyph (branded devices)
+    int haloR = 0, haloAlpha = 0;
+};
 
 std::vector<Piece> Layout(int& width) {
     Rgb fg = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
@@ -235,9 +270,23 @@ std::vector<Piece> Layout(int& width) {
         const auto& it = g_items[i];
         int a = it.dim ? 120 : 255;
         Rgb tc = it.low ? red : fg;
-        out.push_back({ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons, g_light), fg, a, Px(5) });
+        bool branded = it.accent != Accent::None;
+        BrandColor bc = AccentColor(it.accent, g_light);
+        Rgb accent{ bc.r, bc.g, bc.b };
+        Piece icon{ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons, g_light), branded ? accent : fg, a, Px(5) };
+        if (branded && !it.dim) {
+            icon.haloR = Px(3);
+            icon.halo = Halo(icon.m, icon.haloR);
+            icon.haloAlpha = g_light ? 60 : 140;
+        }
+        out.push_back(std::move(icon));
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
-        out.push_back({ RenderMask(t, text, g_light), tc, a, it.charging ? Px(2) : 0 });
+        Piece label{ RenderMask(t, text, g_light), tc, a, it.charging ? Px(2) : 0 };
+        if (branded && it.percent >= 0) {
+            label.barPct = it.percent;
+            label.barColor = it.low ? red : accent;
+        }
+        out.push_back(std::move(label));
         if (it.charging) out.push_back({ RenderMask(std::wstring(1, kBolt), bolt, g_light), charge, a, 0 });
         out.back().gapAfter = i + 1 < g_items.size() ? Px(14) : 0;
     }
@@ -277,8 +326,21 @@ void Paint() {
     if (g_hover) roundRect(Px(4), Px(4), g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 }, g_light ? 20 : 26);
 
     int x = Px(8);
+    Rgb track = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
     for (auto& p : pieces) {
-        cv.Draw(p.m, x, (H - p.m.h) / 2, p.color, p.alpha);
+        int y = (H - p.m.h) / 2;
+        if (p.haloR) cv.Draw(p.halo, x - p.haloR, y - p.haloR, p.color, p.haloAlpha * p.alpha / 255);
+        if (p.barPct >= 0) {
+            // Text and bar are centred together; the bar spans the text's width, like Synapse's battery bar.
+            int bh = std::max(2, Px(2)), gap = Px(3);
+            y = (H - (p.m.h + gap + bh)) / 2;
+            int by = y + p.m.h + gap;
+            int fill = std::max(p.barPct > 0 ? 1 : 0, (p.barPct * p.m.w + 50) / 100);
+            for (int yy = by; yy < by + bh; yy++)
+                for (int xx = 0; xx < p.m.w; xx++)
+                    cv.Blend(x + xx, yy, xx < fill ? p.barColor : track, xx < fill ? p.alpha : 45 * p.alpha / 255);
+        }
+        cv.Draw(p.m, x, y, p.color, p.alpha);
         x += p.m.w + p.gapAfter;
     }
 
