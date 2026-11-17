@@ -18,6 +18,11 @@ namespace {
 
 constexpr BYTE kSwId = 0x0D;  // our software id; replies to other apps (G HUB, Options+) carry theirs
 
+// LIGHTSPEED dongles that speak only HID++ 2.0 and relay a single paired device: the dongle itself
+// answers the ping on index 0xFF (it has no battery feature) and the mouse is on index 1.
+// 046D:C54F = PRO X3 SUPERSTRIKE dongle (Solaar PR #3352, "PASSTHROUGH_DONGLE_IDS").
+bool IsPassthroughDongle(USHORT pid) { return pid == 0xC54F; }
+
 class Hidpp {
 public:
     bool Open(const HidColl* shortC, const HidColl* longC) {
@@ -237,8 +242,10 @@ void PollLogitech(PollContext& ctx) {
         std::wstring path = (longs.empty() ? shorts[0] : longs[0])->path;
         for (auto& ch : path) ch = towlower(ch);
         bool bluetooth = path.find(L"{00001812-") != std::wstring::npos || path.find(L"{00001124-") != std::wstring::npos;
-        if (bluetooth ||
-            (!isReceiver && h.Request(0xFF, 0x00, 0x10 | kSwId, { 0, 0, 0x5A }, p, err, false, 400) == 1 && p.size() >= 3 && p[0] >= 2))
+        if (IsPassthroughDongle(pid))
+            indices = { 1 };
+        else if (bluetooth ||
+                 (!isReceiver && h.Request(0xFF, 0x00, 0x10 | kSwId, { 0, 0, 0x5A }, p, err, false, 400) == 1 && p.size() >= 3 && p[0] >= 2))
             indices = { 0xFF };
         else
             indices = { 1, 2, 3, 4, 5, 6 };
