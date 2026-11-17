@@ -51,6 +51,8 @@ void PollEndgame(PollContext& ctx);   // Endgame Gear 4K mice (OP1w 4k, XM2w 4k)
 void PollWlmouse(PollContext& ctx);   // WLMouse Beast X family (VID 36A7)
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
+void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
+void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
 void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice (passive battery reports)
