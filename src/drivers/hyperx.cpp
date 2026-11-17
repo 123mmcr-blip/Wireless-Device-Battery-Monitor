@@ -211,6 +211,10 @@ bool Cloud3S(const HidColl& c, DeviceStatus& s) {
 // The PlayStation receivers (03F0:0A93, 0951:1713) can first hand back the previous report (FF 01 00 ...);
 // their battery reply is FF 12 05, so on them the reply is read again (up to 10 x 20 ms) until it looks right.
 // 0951:1713 (Kingston PlayStation receiver, same MI_03 layout as 0A93) was verified on hardware.
+// 0951:173F (Kingston receiver of the Cloud Core Wireless DTS, same MI_03 layout) was verified on hardware:
+// connection reply [11] == 1 when the headset is on, 3 when it is off; battery reply FF 12 05 with [9] == 03
+// while discharging and 05 while charging. The mV-to-percent curve is the Stinger Core one, not calibrated for
+// this model.
 bool StingerCore(const HidColl& c, DeviceStatus& s) {
     static const std::vector<BYTE> kConnection = { 0xFF, 0x07, 0x00, 0xFD, 0x04, 0x00, 0x00, 0x02, 0x82, 0x03,
                                                    0x05, 0x29, 0x0F, 0x00, 0x00, 0x03, 0x68, 0x10, 0x00, 0x00 };
