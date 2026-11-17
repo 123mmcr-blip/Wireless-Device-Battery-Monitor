@@ -433,13 +433,19 @@ bool Reposition() {
     // edge, so a window's client-space left edge is its screen-space right edge.
     bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
     int edge = rtl ? tr.right : tr.left;  // screen x we sit next to
-    // Windows 10: News and Interests / Weather sits in ShellFeedsTaskbarViewWindow immediately left of the tray.
-    HWND feeds = FindWindowExW(g_taskbar, nullptr, L"ShellFeedsTaskbarViewWindow", nullptr);
-    if (!rtl && feeds && IsWindowVisible(feeds)) {
-        RECT fr;
-        GetWindowRect(feeds, &fr);
-        if (fr.left < edge && fr.right > fr.left) edge = fr.left;
-    }
+    // Windows 10: News and Interests / Weather sits immediately left of the tray. The window that hosts it
+    // depends on the build: ShellFeedsTaskbarViewWindow on some, DynamicContent2 on others (e.g. 19045,
+    // where the search highlights button is DynamicContent1). Both are direct children of the taskbar and
+    // only a visible one counts. Its rectangle is read on every pass because the weather text changes its
+    // width, so the widget follows it.
+    if (!rtl)
+        for (const wchar_t* cls : { L"ShellFeedsTaskbarViewWindow", L"DynamicContent2" }) {
+            HWND feeds = FindWindowExW(g_taskbar, nullptr, cls, nullptr);
+            if (!feeds || !IsWindowVisible(feeds)) continue;
+            RECT fr;
+            GetWindowRect(feeds, &fr);
+            if (fr.left < edge && fr.right > fr.left) edge = fr.left;
+        }
     // Step past the Widgets button when it sits where we would go.
     RECT wb = WidgetsButtonRect();
     if (wb.right > wb.left && wb.top < bar.bottom && wb.bottom > bar.top &&
