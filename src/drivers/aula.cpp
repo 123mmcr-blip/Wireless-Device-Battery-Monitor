@@ -34,7 +34,7 @@ namespace {
 struct Receiver {
     USHORT vid, pid;
 };
-const Receiver kReceivers[] = { { 0x3554, 0xFA09 }, { 0x41E4, 0x2001 } };
+const Receiver kReceivers[] = { { 0x3554, 0xFA09 }, { 0x3554, 0xFB40 }, { 0x41E4, 0x2001 } };
 
 // M HUB's keyboardPwds table: the six-byte model code returned by command 0x05.
 struct Model {
