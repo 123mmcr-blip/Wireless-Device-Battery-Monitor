@@ -90,6 +90,7 @@ void PollGameSirCyclone(PollContext& ctx);  // Cyclone 2 (XInput mode)
 void PollAirPods(PollContext& ctx);   // Apple AirPods / Beats (BLE proximity broadcasts)
 void PollPhoneLink(PollContext& ctx);  // phone linked with Microsoft Phone Link (reads its Start menu card)
 void PollGalaxyBuds(PollContext& ctx); // Samsung Galaxy Buds (Bluetooth RFCOMM, not HID)
+void PollMoondrop(PollContext& ctx);   // MOONDROP GM01 Pro headset (WalkPlay 2.4 GHz dongle)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);
