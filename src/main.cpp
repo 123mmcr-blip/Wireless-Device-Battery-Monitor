@@ -26,7 +26,7 @@ constexpr DWORD POLL_INTERVAL_MS = 60 * 1000;
 constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
 
-enum MenuId : UINT { ID_REFRESH = 100, ID_AUTOSTART, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_DEVICE_FIRST = 1000 };
+enum MenuId : UINT { ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_DEVICE_FIRST = 1000 };
 
 const wchar_t* kAppName = L"Wireless Battery";
 const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -39,8 +39,9 @@ HWND g_hwnd;
 HANDLE g_refreshEvt, g_stopEvt, g_worker;
 UINT g_taskbarCreatedMsg;
 bool g_lightTaskbar;
-bool g_wantWidget = true;  // user's choice: taskbar widget (default) or tray icons
-bool g_useWidget = false;  // what is actually shown right now
+bool g_wantWidget = true;      // user's choice: taskbar widget (default) or tray icons
+bool g_useWidget = false;      // what is actually shown right now
+bool g_hideLastKnown = false;  // hide (last known) / asleep devices from taskbar and tray
 
 struct TrayEntry {
     UINT uid = 0;
@@ -100,16 +101,25 @@ void SaveHidden() {
 
 bool IsHidden(const std::wstring& key) { return g_hidden.count(key) != 0; }
 
-bool LoadWidgetMode() {
-    DWORD v = 1, sz = sizeof(v);
-    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"TaskbarWidget", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+bool IsEntryHidden(const TrayEntry& e) {
+    return IsHidden(e.st.key) || (g_hideLastKnown && (e.st.asleep || (e.st.percent < 0 && e.lastPct >= 0)));
+}
+
+bool LoadBoolSetting(const wchar_t* name, bool defaultVal) {
+    DWORD v = defaultVal ? 1 : 0, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, name, RRF_RT_REG_DWORD, nullptr, &v, &sz);
     return v != 0;
 }
 
-void SaveWidgetMode(bool on) {
+void SaveBoolSetting(const wchar_t* name, bool on) {
     DWORD v = on ? 1 : 0;
-    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"TaskbarWidget", REG_DWORD, &v, sizeof(v));
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, name, REG_DWORD, &v, sizeof(v));
 }
+
+bool LoadWidgetMode() { return LoadBoolSetting(L"TaskbarWidget", true); }
+void SaveWidgetMode(bool on) { SaveBoolSetting(L"TaskbarWidget", on); }
+bool LoadHideLastKnown() { return LoadBoolSetting(L"HideLastKnownDevices", false); }
+void SaveHideLastKnown(bool on) { SaveBoolSetting(L"HideLastKnownDevices", on); }
 
 bool AutostartEnabled() {
     wchar_t buf[MAX_PATH * 2];
@@ -309,7 +319,7 @@ void UpdatePlaceholder() {
 
 void ApplyEntry(TrayEntry& e) {
     const auto& s = e.st;
-    bool visible = s.connected && !g_useWidget && !IsHidden(s.key);
+    bool visible = s.connected && !g_useWidget && !IsEntryHidden(e);
     if (!visible) {
         if (e.added) { TrayDelete(e.uid); e.added = false; }
         return;
@@ -350,7 +360,7 @@ void UpdateWidget() {
     if (!g_useWidget) return;
     std::vector<const TrayEntry*> list;
     for (auto& [k, e] : g_entries)
-        if (e.st.connected && !IsHidden(k)) list.push_back(&e);
+        if (e.st.connected && !IsEntryHidden(e)) list.push_back(&e);
     std::sort(list.begin(), list.end(), [](const TrayEntry* a, const TrayEntry* b) {
         int ka = KindOrder(a->st.kind), kb = KindOrder(b->st.kind);
         return ka != kb ? ka < kb : a->st.name < b->st.name;
@@ -430,6 +440,14 @@ void SetMode(bool useWidget) {
     Reconcile();
 }
 
+void SetHideLastKnown(bool on) {
+    g_hideLastKnown = on;
+    SaveHideLastKnown(on);
+    for (auto& [k, e] : g_entries) ApplyEntry(e);
+    UpdatePlaceholder();
+    UpdateWidget();
+}
+
 void ReAddAll() {
     g_placeholder = false;
     for (auto& [k, e] : g_entries) { e.added = false; ApplyEntry(e); }
@@ -456,6 +474,7 @@ void ShowMenu() {
         AppendMenuW(m, MF_STRING | (IsHidden(k) ? 0 : MF_CHECKED), ID_DEVICE_FIRST + (UINT)keys.size(), line.c_str());
         keys.push_back(k);
     }
+    AppendMenuW(m, MF_STRING | (g_hideLastKnown ? MF_CHECKED : 0), ID_HIDE_LAST_KNOWN, L"Hide last known / asleep devices");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (g_wantWidget ? MF_CHECKED : 0), ID_MODE_WIDGET, L"Show on the taskbar (icon + percentage)");
     AppendMenuW(m, MF_STRING | (!g_wantWidget ? MF_CHECKED : 0), ID_MODE_TRAY, L"Show as tray icons");
@@ -474,6 +493,7 @@ void ShowMenu() {
     switch (cmd) {
         case ID_REFRESH: SetEvent(g_refreshEvt); break;
         case ID_AUTOSTART: SetAutostart(!AutostartEnabled()); break;
+        case ID_HIDE_LAST_KNOWN: SetHideLastKnown(!g_hideLastKnown); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
@@ -633,6 +653,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_refreshEvt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_stopEvt = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_wantWidget = LoadWidgetMode();
+    g_hideLastKnown = LoadHideLastKnown();
     LoadHidden();
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
