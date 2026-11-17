@@ -52,6 +52,14 @@ bool HidDev::Open(const HidColl& c) {
     return ok();
 }
 
+bool HidDev::OpenReadOnly(const HidColl& c) {
+    Close();
+    c_ = c;
+    h_ = CreateFileW(c.path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+    overlapped_ = true;
+    return ok();
+}
+
 bool HidDev::OpenFeatureOnly(const HidColl& c) {
     Close();
     c_ = c;

@@ -55,5 +55,6 @@ std::wstring DumpHidCollections() {
                  c.featLen());
         out += line + HidProduct(c) + L"\n";
     }
+    out += DumpXentaFrames();
     return out;
 }

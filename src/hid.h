@@ -38,6 +38,7 @@ public:
     HidDev& operator=(const HidDev&) = delete;
 
     bool Open(const HidColl& c);            // read/write, overlapped
+    bool OpenReadOnly(const HidColl& c);    // read only, overlapped: for push-only collections another app may hold
     bool OpenFeatureOnly(const HidColl& c);  // zero access: enough for feature reports, works on mice/keyboards
     void Close();
     bool ok() const { return h_ != INVALID_HANDLE_VALUE; }

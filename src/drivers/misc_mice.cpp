@@ -5,6 +5,10 @@
 //  * Xenta receivers (Delux M900 Pro, Attack Shark X6 / R1 / X11 / X3 Max / V3 Pro; VID 1D57): the receiver
 //    broadcasts input report 03 on usage page 000A every ~2 s: [03][model][40][state][percent],
 //    state 2 = full, 3 = charging (percent frozen). From github.com/AeonArcHQ/omarchy-delux-m900.
+//    The collection is push-only (no output or feature report), so it is opened read-only, as BatteryTray
+//    and attackshark-battery-windows do: a read/write open fails while a vendor app holds it without
+//    sharing write access. `--dump` also prints the raw frames it sends, to add models such as the
+//    Moxanic Lumi G1 whose receiver (1D57:FA60) was not read yet.
 //  * Ajazz AJ179 family (VID 249A receiver, 248A cable, interface 2): unnumbered 32-byte report,
 //    command 10 (device info, answered by the receiver): reply [10][00 = ok]..., [4..7] model id,
 //    [12] charging, [13] percent, [14] mouse connected (receiver), [31] = sum([4..30]).
@@ -34,6 +38,7 @@
 #include "drivers.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <set>
@@ -113,7 +118,7 @@ void PollXenta(PollContext& ctx) {
             bool fresh = !l.dev;
             if (fresh) {
                 l.dev = std::make_unique<HidDev>();
-                if (!l.dev->Open(*c)) { g_xenta.erase(c->path); continue; }
+                if (!l.dev->OpenReadOnly(*c)) { g_xenta.erase(c->path); continue; }
             }
             // Take everything queued since the last poll; a new listener waits for two frames.
             ULONGLONG until = GetTickCount64() + (fresh ? 5000 : 0);
@@ -291,6 +296,39 @@ void PollIncott(PollContext& ctx) {
 }
 
 }  // namespace
+
+// For `--dump`: the raw input reports each Xenta status collection sends during ~6 s (three frames at the
+// usual 2 s cadence), so a model whose frames are not understood yet can be added from a user's output.
+std::wstring DumpXentaFrames() {
+    std::wstring out;
+    for (const HidColl& c : EnumHid()) {
+        if (c.vid != 0x1D57 || c.page() != 0x000A || c.inLen() < 5) continue;
+        wchar_t head[64];
+        swprintf(head, 64, L"\nXenta %04X:%04X status frames (6 s):\n", c.vid, c.pid);
+        out += head;
+        HidDev d;
+        if (!d.OpenReadOnly(c)) {
+            out += L"  cannot open (error " + std::to_wstring(GetLastError()) + L")\n";
+            continue;
+        }
+        std::vector<BYTE> r;
+        int frames = 0;
+        ULONGLONG end = GetTickCount64() + 6000;
+        while ((LONGLONG)end - (LONGLONG)GetTickCount64() > 0 && frames < 16) {
+            if (d.Read(r, (int)std::max<LONGLONG>(1, (LONGLONG)end - (LONGLONG)GetTickCount64())) < 0) break;
+            out += L" ";
+            for (BYTE b : r) {
+                wchar_t hx[4];
+                swprintf(hx, 4, L" %02X", b);
+                out += hx;
+            }
+            out += L"\n";
+            frames++;
+        }
+        if (!frames) out += L"  none (mouse off, asleep or on Bluetooth?)\n";
+    }
+    return out;
+}
 
 void PollMiscMice(PollContext& ctx) {
     PollMotospeed(ctx);
