@@ -48,10 +48,6 @@ void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 wireless keybo
 void PollDareu(PollContext& ctx);     // DAREU EM901X receiver (split feature/input collections)
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro / N9 Ultra headsets (virtual COM port)
 void PollKeychron(PollContext& ctx);  // Keychron mice, Nape Pro trackball (Link-KM receiver)
-void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99, MCHOSE K99 V2 etc. keyboards (before Kysona, same vendor id)
-void PollAtkSerial(PollContext& ctx); // ATK N9 Pro headset (virtual COM port)
-void PollKeychron(PollContext& ctx);  // Keychron mice
-void PollKeychron(PollContext& ctx);  // Keychron mice (incl. 4K Link / 8K receivers), Nape Pro trackball (Link-KM receiver)
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0
 void PollEndgame(PollContext& ctx);   // Endgame Gear 4K mice (OP1w 4k, XM2w 4k) on the 4K dongle
 void PollVaxee(PollContext& ctx);     // VAXEE 4K receiver / NP-01S V2 cable, read-only battery commands
@@ -61,30 +57,23 @@ void PollSprime(PollContext& ctx);    // Sprime PM1 (1915:AC1C / AD8C receivers,
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
 void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle (AJAZZ AK820 MAX, AK980 V2, AULA F108 Pro)
-void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 dongle
 void PollJbl(PollContext& ctx);       // JBL Quantum 520 / 650 / 850 / 950 wireless headsets
-void PollRog(PollContext& ctx);       // ASUS ROG keyboards and mice
+void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
 void PollRoyalKludge(PollContext& ctx);  // Royal Kludge MG6 Pro (VID 2E3C, QiWang protocol)
-void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset
-void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW mice
 void PollMchoseG3(PollContext& ctx);  // MCHOSE G3 V2 wireless mouse (VID 3837)
 void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice incl. VT1 Pro Max (passive battery reports)
 void PollAreson(PollContext& ctx);    // Areson 25A7 receivers (Redragon M913 / M915)
 void PollMchose(PollContext& ctx);    // MCHOSE mice (L7 / M7 / A7 / K7 families, VID 5253)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro / M800 Pro, Ajazz AJ179 and AJ159/AJ-series
-void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series, Incott, Wraith W1
 void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V2 HyperSpeed / V2 Pro (2023) / V3 / V3 Pro / V3 X, Barracuda X (2022)
-void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollFantech(PollContext& ctx);   // Fantech Helios Go XD5 (wired 25A7:FA7B, dongle 25A7:FA7C)
-void PollRazerHeadsets(PollContext& ctx);  // Razer BlackShark V3 / V3 Pro, BlackShark V2 Pro (2023)
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
 void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
 void PollAtkBitmouse(PollContext& ctx);  // ATK / VXE NK NANO dongle 373B:1216 (before Kysona, same vendor id)
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
-void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight, Redragon (Compx)
 void PollHyperX(PollContext& ctx);
 void PollLogitechG435(PollContext& ctx);  // G435 headset on the 046D:0ADF dongle (not HID++)
 void PollLogitech(PollContext& ctx);
