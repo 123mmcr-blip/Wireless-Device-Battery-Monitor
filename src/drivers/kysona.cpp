@@ -1,6 +1,7 @@
 // Kysona, Pulsar and ATK / VXE wireless mice (VID 3554, ATK dongles 373B), G-Wolves models on this protocol
 // (VID 33E4, e.g. Fenrir Asym) and the original Hitscan
-// Hyperlight (VID 3770, verified on the 1K receiver 3770:0200). They share one protocol:
+// Hyperlight (VID 3770, verified on the 1K receiver 3770:0200), and Pulsar's newer XS-1 generation
+// (VID 3710, verified on the 8K Dongle 3710:5406). They share one protocol:
 // 17-byte output/input report id 08: [08][cmd][0 x14][checksum], checksum = 0x55 - sum(bytes 0..15).
 //   cmd 03 = online status -> reply [6] = 1 when the mouse is connected to the dongle
 //   cmd 04 = battery       -> reply [6] = percent, [7] = charging, [8..9] = millivolts
@@ -46,7 +47,7 @@ std::wstring CleanName(std::wstring n, USHORT vid, USHORT pid) {
 
 void PollKysona(PollContext& ctx) {
     std::vector<std::wstring> seenNames;
-    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B, (USHORT)0x3770, (USHORT)0x33E4 }) {
+    for (USHORT vendor : { (USHORT)0x3554, (USHORT)0x373B, (USHORT)0x3770, (USHORT)0x33E4, (USHORT)0x3710 }) {
         for (auto [vid, pid] : ctx.Products(vendor)) {
             // Kysona exposes a dedicated 17-byte collection; ATK / VXE receivers put report 08 in a
             // vendor collection that also carries larger reports. The checksummed reply filters out
