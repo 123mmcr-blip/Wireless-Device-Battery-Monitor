@@ -47,6 +47,7 @@ Hover for details. Click for the menu: every device (click one to hide or show i
 | **Keychron mice** | M4 and other Keychron mice on the 2.4 GHz receiver; 8K mice (M5 8K, G6 HE 8K ...) on the TurboLink 8K receiver; Nape Pro trackball on the Link-KM receiver or cable | Vendor report from Keychron Launcher (Nape Pro: raw HID A7 31) |
 | **LAMZU** | Maya X, Maya, Maya M, Tachi, Inca, Paro, Thorn, Atlantis Mini / OG Champion, Orcus (cable, 1K and 4K/8K dongles) | Vendor feature report from LAMZU Aurora |
 | **Endgame Gear** | OP1w 4k (v1 / v2), XM2w 4k (v1 / v2) on the 4K dongle | Vendor feature report `A1`, battery command `B4` (read-only) |
+| **WLMouse** | Beast X 8K, Beast X Mini / Mini Pro, Beast X Pro, Beast MAX, Sword X 8K (receiver or cable; not the Beast X 4K) | Vendor feature report, status command `0x83` |
 | **Redragon** | Compx-based wireless mice: M916 Pro 1K (tested), M913 Impact Elite (tri-mode), G49 (receiver or cable) | Kysona protocol |
 | **HECATE** | G5M PRO and other HECATE mice on the same receiver, and USB cable `35BB:D3FA / D3FC / D3FD` | Kysona protocol |
 | **Redragon** | Compx-based wireless mice: M916 Pro 1K (tested), M913 Impact Elite (tri-mode), G49 (receiver or cable); dual-mode M913 Impact Elite 16000 DPI (Areson receiver `25A7:FA07` or cable `FA08`) | Kysona protocol (dual-mode M913: feature report 08, reply 09, battery in 10 % steps) |
@@ -153,6 +154,7 @@ The protocols come from these projects' research:
 - LAMZU Aurora ([lamzu.net](https://www.lamzu.net)): LAMZU mice
 - [mouse_m908](https://github.com/dokutan/mouse_m908): dual-mode Redragon M913 protocol
 - [vole](https://github.com/johanneszab/vole) and [Endgame_Gear_Web_Configurator](https://github.com/Janlhin/Endgame_Gear_Web_Configurator): Endgame Gear 4K mice
+- [mouse-gauge](https://github.com/djnawara/mouse-gauge) and [HaloBattery](https://github.com/Waturus/HaloBattery): WLMouse
 - [redragon-battery-omarchy](https://github.com/EliottV17/redragon-battery-omarchy) and [g49-web-control](https://github.com/pingpingjinping/g49-web-control): Redragon ids
 - [peripheral-battery-tray](https://github.com/SteveWang92/peripheral-battery-tray) / [G-Helper](https://github.com/seerge/g-helper): ASUS ROG
 - [zowie-battery](https://github.com/yleshchuk/zowie-battery) and [zowie-battery-tray](https://github.com/IgnacioBarb/zowie-battery-tray): ZOWIE EC-CW and DW
