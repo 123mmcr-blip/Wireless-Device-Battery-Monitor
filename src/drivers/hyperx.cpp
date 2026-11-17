@@ -37,7 +37,7 @@ bool Cloud3(const HidColl& c, DeviceStatus& s) {
     };
     std::vector<BYTE> r;
     if (!q(0x82, r)) return false;
-    s = Base(c.pid, L"HyperX Cloud III Wireless");
+    s = Base(c.pid, (c.pid == 0x069F || c.pid == 0x0995) ? L"HyperX Cloud II Core Wireless" : L"HyperX Cloud III Wireless");
     s.connected = r[2] != 0;
     if (s.connected) {
         if (q(0x8A, r)) s.charging = r[2] == 1;
@@ -138,6 +138,26 @@ bool CloudFlight(const HidColl& c, DeviceStatus& s) {
     return true;
 }
 
+// Cloud III S Wireless: report 0C [02 03 01 00 <cmd>]; reply [5] = cmd, [6] = value (FF = invalid).
+//   02 -> [6] == 2 connected, 06 -> [6] %, 48 -> [6] 0 discharging / 1 charging / 2 full.
+// From github.com/LennardKittner/HyperHeadset (cloud_iii_s_wireless.rs).
+bool Cloud3S(const HidColl& c, DeviceStatus& s) {
+    HidDev d;
+    if (!d.Open(c)) return false;
+    auto q = [&](BYTE cmd, std::vector<BYTE>& r) {
+        return Query(d, { 0x0C, 0x02, 0x03, 0x01, 0x00, cmd }, r, 1000,
+                     [cmd](const std::vector<BYTE>& r) { return r.size() >= 7 && r[0] == 0x0C && r[5] == cmd && r[6] != 0xFF; });
+    };
+    std::vector<BYTE> r;
+    if (!q(0x02, r)) return false;
+    s = Base(c.pid, L"HyperX Cloud III S Wireless");
+    s.connected = r[6] == 2;
+    if (!s.connected) return true;
+    if (q(0x06, r) && r[6] <= 100) s.percent = r[6];
+    if (q(0x48, r)) s.charging = r[6] == 1 || r[6] == 2;
+    return true;
+}
+
 struct Model {
     USHORT vid;
     std::vector<USHORT> pids;
@@ -147,11 +167,15 @@ struct Model {
 
 const Model kModels[] = {
     { 0x03F0, { 0x05B7, 0x0C9D }, [](const HidColl& c) { return c.outLen() == 62 && c.inLen() == 62; }, Cloud3 },
-    { 0x03F0, { 0x0696, 0x018B }, [](const HidColl& c) { return c.page() == 0xFF90 && c.usage() == 0x0303; }, Cloud2 },
+    // Cloud II Core Wireless: same 66 <cmd> protocol as Cloud III Wireless, 64-byte reports (HyperHeadset).
+    { 0x03F0, { 0x069F, 0x0995 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 62 && c.inLen() >= 62; }, Cloud3 },
+    { 0x03F0, { 0x06BE, 0x02CC }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 7; }, Cloud3S },
+    { 0x03F0, { 0x0696, 0x018B, 0x0D93 }, [](const HidColl& c) { return c.page() == 0xFF90 && c.usage() == 0x0303; }, Cloud2 },
     { 0x0951, { 0x1718 }, [](const HidColl& c) { return c.outLen() == 62; }, Cloud2Kingston },
     { 0x03F0, { 0x098D }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudAlpha },
     { 0x03F0, { 0x08BE }, [](const HidColl& c) { return c.page() == 0xFF13 && c.usage() == 0xFF00; }, CloudAlpha2 },
-    { 0x0951, { 0x16C4, 0x1723 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },
+    { 0x0951, { 0x16C4, 0x1723, 0x1749 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },
+    { 0x03F0, { 0x0E90 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },  // Cloud Flight (HP)
 };
 
 }  // namespace

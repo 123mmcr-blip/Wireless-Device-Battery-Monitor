@@ -80,7 +80,11 @@ void PollGenericHid(PollContext& ctx) {
                 ULONG val = 0;
                 if (HidP_GetUsageValue(type, v.UsagePage, v.LinkCollection, u, &val, pp, (PCHAR)buf.data(), len) != HIDP_STATUS_SUCCESS)
                     continue;
-                if (v.LogicalMax > v.LogicalMin) pct = Clamp100((int)(((LONG)val - v.LogicalMin) * 100 / (v.LogicalMax - v.LogicalMin)));
+                // Apple devices (Magic Trackpad / Mouse / Keyboard) report a plain percentage while
+                // declaring a 0-255 range; Linux handles them with HID_BATTERY_QUIRK_PERCENT.
+                bool percentQuirk = c.vid == 0x05AC && val <= 100;
+                if (percentQuirk) pct = (int)val;
+                else if (v.LogicalMax > v.LogicalMin) pct = Clamp100((int)(((LONG)val - v.LogicalMin) * 100 / (v.LogicalMax - v.LogicalMin)));
                 else if (val <= 100) pct = (int)val;
             }
             if (pct >= 0) break;
