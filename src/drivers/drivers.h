@@ -57,6 +57,7 @@ void PollLogitech(PollContext& ctx);
 void PollRazer(PollContext& ctx);
 void PollSteelSeries(PollContext& ctx);
 void PollCorsair(PollContext& ctx);
+void PollCoolerMaster(PollContext& ctx);
 void PollPlayStation(PollContext& ctx);
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
