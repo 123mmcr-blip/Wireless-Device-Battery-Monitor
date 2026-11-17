@@ -42,12 +42,15 @@
 //    20 = W1 Freestyle. The Incott models use other codes (1, 2, 3, 6, 8, 9, 14), so a W1 is never read
 //    with the Incott query and vice versa. Status: 86 is a per-button read (SET_FEATURE [09][86][button],
 //    the feature reply holds that button's mapping). The mouse pushes its status input report 09
-//    [09][battery][rate | slot << 4]... after the full sweep of 86 over buttons 0, 1, 2, 4, 3, which is
-//    what both vendor clients send (the web driver's triggerStatusRead, and the W1 Service right after
-//    8F); a single 86 (button 0) got no push on the reporter's mouse. Battery bit 7 = charging, low 7
-//    bits = percent. From the Wraith web driver at https://www.w1.software/ (assets/index-*.js: READ_INIT
-//    0x8F, READ_STATUS 0x86, zi() sweep, status input report parsed by its Qr()) and the W1 Service
-//    v0.1.7 binary (8F, 200 ms, 86 sweep, then report-09 reads on the first FF05 collection).
+//    [09][battery][rate | slot << 4]... in answer to these reads. Each read is done like the web driver's
+//    query helper _i(): SET_FEATURE, wait 150 ms (8 ms for other commands), GET_FEATURE 09, and once more
+//    20 ms later if the reply is still empty; firing the 86s back to back without reading the replies got
+//    no push on the reporter's mouse, not even on the cable. After 8F the sweep over buttons 0, 1, 2, 4, 3
+//    (its Ri()) runs once, then the web driver's 700 ms keep-alive Bi() (one 86 for button 0, read back)
+//    repeats while the status report is awaited. Battery bit 7 = charging, low 7 bits = percent. From the
+//    Wraith web driver at https://www.w1.software/ (assets/index-*.js: READ_INIT 0x8F, READ_STATUS 0x86,
+//    _i() timing, Ri() sweep, Bi() on a 700 ms interval, status input report 09 parsed by its Qr()) and
+//    the W1 Service v0.1.7 binary (8F, 200 ms, 86 sweep, then report-09 reads on the first FF05 collection).
 #include "drivers.h"
 
 #include <algorithm>
@@ -320,22 +323,40 @@ void PollWraithW1(PollContext& ctx) {
             }
             std::vector<BYTE> r;
             bool got = false;
+            // One 86 (per-button read) the way the web driver's _i() does it: SET_FEATURE, 150 ms, GET_FEATURE,
+            // and a second GET 20 ms later if the reply is still empty. Input reports that arrive meanwhile
+            // stay queued by Windows and are read afterwards.
+            auto readButton = [&d](BYTE button) {
+                if (!d.SetFeature({ 0x09, 0x86, button })) return false;
+                std::vector<BYTE> f;
+                for (int t = 0; t < 2; t++) {
+                    Sleep(t == 0 ? 150 : 20);
+                    if (!d.GetFeature(0x09, f)) return true;
+                    if (f.size() >= 4 && f[1] == 0x86) break;
+                }
+                return true;
+            };
+            auto listen = [&](int ms) {
+                ULONGLONG end = GetTickCount64() + ms;
+                while (!got && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
+                    for (auto& in : ins) {
+                        if (in->Read(r, 50) >= 2 && r[0] == 0x09 && (r[1] & 0x7F) <= 100) { got = true; break; }
+                    }
+                }
+            };
             if (!ins.empty()) {
                 Sleep(200);  // the W1 Service waits 200 ms after 8F before its next request
-                // Read-only sweep of 86 (per-button read) over buttons 0, 1, 2, 4, 3, as the vendor clients do;
-                // the mouse answers it with the status input report. One retry if nothing arrives.
-                for (int attempt = 0; attempt < 2 && !got; attempt++) {
-                    bool sent = false;
-                    for (BYTE b : { (BYTE)0, (BYTE)1, (BYTE)2, (BYTE)4, (BYTE)3 }) {
-                        if (d.SetFeature({ 0x09, 0x86, b })) sent = true;
-                        Sleep(30);
-                    }
-                    if (!sent) break;
-                    ULONGLONG end = GetTickCount64() + 1000;
-                    while (!got && (LONGLONG)end - (LONGLONG)GetTickCount64() > 0) {
-                        for (auto& in : ins) {
-                            if (in->Read(r, 100) >= 2 && r[0] == 0x09 && (r[1] & 0x7F) <= 100) { got = true; break; }
-                        }
+                // Read-only sweep of 86 over buttons 0, 1, 2, 4, 3 (the web driver's Ri()), then its 700 ms
+                // keep-alive Bi() (86 for button 0, read back) while waiting for the status input report.
+                bool sent = false;
+                for (BYTE b : { (BYTE)0, (BYTE)1, (BYTE)2, (BYTE)4, (BYTE)3 }) {
+                    if (readButton(b)) sent = true;
+                }
+                if (sent) {
+                    listen(400);
+                    for (int beat = 0; beat < 4 && !got; beat++) {
+                        if (!readButton(0)) break;
+                        listen(550);  // ~700 ms per beat including the 150 ms read
                     }
                 }
             }
