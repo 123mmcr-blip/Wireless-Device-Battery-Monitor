@@ -52,6 +52,101 @@ std::map<USHORT, Cached> g_cache;
 
 const wchar_t* Name(USHORT pid) { return (pid == 0x0576 || pid == 0x0577) ? L"Razer BlackShark V3 Pro" : L"Razer BlackShark V3"; }
 
+// ---- BlackShark V2 HyperSpeed: MediaTek vendor HID (NOT V2 Pro PA protocol) ----------------------
+// Based on justik13/razer-blackshark-v2-hyperspeed-webhid (MIT).
+// Dongle 1532:0565, vendor collection usage page FF14 (FF00 fallback), usually interface 3.
+// HID report: [02][00][60|seq][00 00 00][04][00][00][80][cmd][00][00]...[xor][00].
+// Only GET 0x21 (battery) and GET 0x2A (charging) are issued; no settings are modified.
+
+BYTE NextHsSeq() {
+    static BYTE seq = 0;
+    return static_cast<BYTE>(0x60 | ((seq++) & 0x1F));
+}
+
+std::vector<BYTE> HsQueryFrame(BYTE cmd, BYTE seq) {
+    std::vector<BYTE> b(64, 0);
+    b[0] = 0x02; // report ID, excluded from WebHID payload, included in Win32 Write
+    b[2] = seq;
+    b[6] = 0x04; // GET request length
+    b[9] = 0x80; // route from RF dongle to headset
+    b[10] = cmd;
+    BYTE checksum = 0;
+    for (int i = 0; i < 62; ++i) checksum ^= b[i];
+    b[62] = checksum;
+    return b;
+}
+
+// The Win32 HID layer returns the report ID in r[0] for numbered reports.
+// WebHID's payload offsets are therefore shifted by one here.
+bool ParseHsReply(const std::vector<BYTE>& r, BYTE cmd, BYTE seq, int& value) {
+    if (r.size() < 64 || r[0] != 0x02 || r[2] != seq || r[10] != cmd || r[12] < 1) return false;
+    BYTE checksum = 0;
+    for (int i = 1; i < 62; ++i) checksum ^= r[i];
+    if (checksum != r[62]) return false;
+    value = r[13];
+    return true;
+}
+
+int HsQuery(HidDev& d, BYTE cmd) {
+    const BYTE seq = NextHsSeq();
+    d.Flush();
+    if (!d.Write(HsQueryFrame(cmd, seq))) return -1;
+    const ULONGLONG end = GetTickCount64() + 650;
+    std::vector<BYTE> r;
+    while (GetTickCount64() < end) {
+        int remaining = static_cast<int>(end - GetTickCount64());
+        if (d.Read(r, remaining) < 0) break;
+        int value = -1;
+        if (ParseHsReply(r, cmd, seq, value)) return value;
+    }
+    return -1;
+}
+
+void PollBlackSharkV2HyperSpeed(PollContext& ctx) {
+    constexpr USHORT pid = 0x0565; // 2.4 GHz dongle, not the wired 056E variant
+    if (ctx.IsClaimed(0x1532, pid)) return;
+    auto colls = ctx.Find(0x1532, pid, [](const HidColl& c) {
+        return (c.page() == 0xFF14 || c.page() == 0xFF00) &&
+               c.usage() == 0x01 && c.outLen() >= 64 && c.inLen() >= 64;
+    });
+    // Prefer the specific vendor control interface so audio/telephony endpoints are not touched.
+    for (const HidColl* c : colls) {
+        if (c->page() != 0xFF14) continue;
+        HidDev d;
+        if (!d.Open(*c)) continue;
+        const int level = HsQuery(d, 0x21);
+        if (level < 0 || level > 100) continue;
+        const int charging = HsQuery(d, 0x2A);
+        DeviceStatus s;
+        s.key = L"blackshark:" + Hex4(pid);
+        s.name = L"Razer BlackShark V2 HyperSpeed";
+        s.kind = DeviceKind::Headset;
+        s.via = L"2.4 GHz receiver";
+        s.percent = level;
+        s.charging = charging > 0;
+        ctx.Add(s, 0x1532, pid);
+        return;
+    }
+    // Fallback for firmware exposing the control collection on FF00.
+    for (const HidColl* c : colls) {
+        if (c->page() != 0xFF00) continue;
+        HidDev d;
+        if (!d.Open(*c)) continue;
+        const int level = HsQuery(d, 0x21);
+        if (level < 0 || level > 100) continue;
+        const int charging = HsQuery(d, 0x2A);
+        DeviceStatus s;
+        s.key = L"blackshark:" + Hex4(pid);
+        s.name = L"Razer BlackShark V2 HyperSpeed";
+        s.kind = DeviceKind::Headset;
+        s.via = L"2.4 GHz receiver";
+        s.percent = level;
+        s.charging = charging > 0;
+        ctx.Add(s, 0x1532, pid);
+        return;
+    }
+}
+
 // ---- BlackShark V2 Pro (2023): "PA" envelope ----------------------------------------------------
 
 std::vector<BYTE> PaFrame(BYTE totalLen, BYTE innerLen, BYTE type, BYTE cmd, BYTE flag) {
@@ -119,6 +214,7 @@ void PollBlackSharkV2Pro2023(PollContext& ctx) {
 }  // namespace
 
 void PollRazerHeadsets(PollContext& ctx) {
+    PollBlackSharkV2HyperSpeed(ctx);
     PollBlackSharkV2Pro2023(ctx);
     for (USHORT pid : { (USHORT)0x0576, (USHORT)0x0577, (USHORT)0x0579, (USHORT)0x057A }) {
         if (ctx.IsClaimed(0x1532, pid)) continue;
