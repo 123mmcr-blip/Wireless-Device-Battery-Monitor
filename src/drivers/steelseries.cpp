@@ -138,9 +138,11 @@ bool Aerox(HidDev& d, USHORT pid, DeviceStatus& s) {
                                                       : L"SteelSeries Prime Wireless";
     s = Mouse(pid, name, wired);
     int raw = r[1] & 0x7F;
-    s.charging = (r[1] & 0x80) != 0;
     if (raw == 0) s.connected = false;  // mouse off / out of range
-    else s.percent = Clamp100((raw - 1) * 5);
+    else if (raw <= 21) {  // only levels 1..21 represent 0..100%; invalid levels stay unknown
+        s.percent = (raw - 1) * 5;
+        s.charging = (r[1] & 0x80) != 0;
+    }
     return true;
 }
 
