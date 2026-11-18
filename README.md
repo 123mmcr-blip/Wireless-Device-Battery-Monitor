@@ -88,6 +88,7 @@ Turn off **Record battery history** in the menu to stop saving readings; what wa
 
 | Vendor | Devices | How |
 |---|---|---|
+| **DARKRIM** | SHADOW (寸渊影弑) on its `3654:6901` USB receiver (hardware-tested) | Read-only CRC-checked battery query and charging flag; observed coarse readings in 10% steps, finer precision unverified ([protocol notes](docs/darkrim.md)) |
 | **Inphic** | IN10R MAX / IN10 MAX on the KP 8K receiver (`1D57:FA65`; model `73` hardware-tested, model `74` untested) | Passive Xenta status reports; two matching frames confirm the level ([protocol notes](docs/inphic.md)) |
 | **ASTRO** | A50 X (`046D:0B0B`, tested), A50 Gen 5 (`046D:0B1C`), A50 Gen 4 (`9886:002C` tested, `002D`/`002A`), A50 Gen 3 (`9886:0015` tested, `0014`/`0018`/`001D`/`0026`), A20 Wireless (`9886:0037`–`0045`), via USB base station | Battery percentage, charging and docked status |
 | **Logitech** | Mice and keyboards on Unifying, Bolt, Lightspeed (including the PRO X3 SUPERSTRIKE dongle `046D:C54F`) and Nano receivers, over USB or Bluetooth; G headsets (G533, G535, G633/G635/G733/G933/G935, G PRO/PRO X); G435 on the newer `046D:0ADF` dongle | HID++ 1.0 / 2.0 with feature discovery: unified battery, battery level, voltage, ADC; G435: CRC-16 framed vendor reports, `GET_BATTERY` in mV |
