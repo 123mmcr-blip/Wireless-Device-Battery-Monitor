@@ -98,7 +98,7 @@ int main() {
             CHECK(s.percent == static_cast<int>(percent) && s.connected && !s.asleep);
             CHECK(s.kind == DeviceKind::Microphone);
             CHECK(s.name == L"MAONO PD200W" && s.via == L"2.4 GHz receiver");
-            CHECK(s.key == L"maono:pd200w:maono-receiver" && s.graceSec == 0 && !s.charging);
+            CHECK(s.key == L"maono:pd200w" && s.graceSec == 0 && !s.charging);
         }
         PollMaono(ctx);
         GenericFallback(ctx);
