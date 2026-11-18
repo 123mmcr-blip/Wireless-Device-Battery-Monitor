@@ -39,4 +39,11 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item WirelessBattery.exe, $hscExe, installer\THIRD_PARTY_NOTICES.txt $stage
 Copy-Item LICENSE (Join-Path $stage "LICENSE.txt")
 Compress-Archive -Path "$stage\*" -DestinationPath "dist\WirelessBattery-$Version-portable.zip" -Force
-Write-Host "Done: dist\WirelessBattery-Setup-$Version.exe and dist\WirelessBattery-$Version-portable.zip"
+# Checksums of what the app can install or users download. The maintainer signs this file on their own
+# PC (scripts\sign-release.ps1) and uploads SHA256SUMS.txt.sig; the app only installs a signed setup.
+# sha256sum format with LF line ends, so `sha256sum -c SHA256SUMS.txt` also works.
+$sums = foreach ($name in "WirelessBattery-Setup-$Version.exe", "WirelessBattery-$Version-portable.zip") {
+    "$((Get-FileHash (Join-Path 'dist' $name) -Algorithm SHA256).Hash.ToLower())  $name"
+}
+[IO.File]::WriteAllText((Join-Path $root 'dist\SHA256SUMS.txt'), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+Write-Host "Done: dist\WirelessBattery-Setup-$Version.exe, dist\WirelessBattery-$Version-portable.zip and dist\SHA256SUMS.txt"
