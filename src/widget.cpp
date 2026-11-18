@@ -11,6 +11,8 @@ HWND g_wnd, g_taskbar, g_tip, g_notify, g_rebar;
 UINT g_clickMsg;
 bool g_light, g_hover;
 bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
+bool g_stacked;     // icon above the percentage (menu option, PR #525)
+bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
@@ -367,9 +369,16 @@ struct Piece {
     Rgb barColor{};
     Mask halo;        // glow drawn behind the glyph (branded devices)
     int haloR = 0, haloAlpha = 0;
+    int px = INT_MIN, py = 0;  // fixed top-left position (stacked and vertical layouts); INT_MIN = flow left to right
 };
 
-std::vector<Piece> Layout(int& width) {
+// Three arrangements of the same pieces:
+//  * normal: "[icon] 30%  [icon] 93%" in one row (unchanged default)
+//  * stacked (menu option, from PR #525): each device's icon above its percentage, to save width;
+//    used only when the taskbar is tall enough, otherwise the normal row
+//  * vertical (left / right taskbar, from PR #321): one device per row block, stacked top to bottom
+// `width` and `height` return the strip's size; in the vertical layout the width is the bar's.
+std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     Rgb fg = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
     Rgb red = g_light ? Rgb{ 196, 30, 40 } : Rgb{ 255, 90, 90 };
     Rgb charge = g_light ? Rgb{ 0, 120, 212 } : Rgb{ 96, 205, 255 };
@@ -379,12 +388,15 @@ std::vector<Piece> Layout(int& width) {
     HFONT caption = MakeFont(std::max(8, Px(7)), FW_SEMIBOLD, L"Segoe UI Variable Text", L"Segoe UI");  // never under 8 px
 
     std::vector<Piece> out;
+    struct Slot { int icon, label, bolt; };  // indices of one device's pieces
+    std::vector<Slot> slots;
     if (g_items.empty()) out.push_back({ RenderMask(std::wstring(1, kBatteryUnknown), icons, g_light), fg, 110, 0 });
     for (size_t i = 0; i < g_items.size(); i++) {
         const auto& it = g_items[i];
         int a = it.dim ? 120 : 255;
         Rgb tc = it.low ? red : fg;
         size_t glyph = out.size();
+        slots.push_back({ (int)glyph, (int)glyph + 1, it.charging ? (int)glyph + 2 : -1 });
         bool branded = it.accent != Accent::None;
         BrandColor bc = AccentColor(it.accent, g_light);
         Rgb accent{ bc.r, bc.g, bc.b };
@@ -417,6 +429,58 @@ std::vector<Piece> Layout(int& width) {
     DeleteObject(text);
     DeleteObject(caption);
 
+    height = barH;
+    const int rowGap = Px(2), barRoom = Px(5);  // barRoom: space for a brand level bar under the text
+    int iconH = 0, textH = 0;
+    for (const Slot& s : slots) {
+        iconH = std::max(iconH, out[s.icon].m.h);
+        textH = std::max(textH, out[s.label].m.h);
+    }
+    bool stacked = !g_vertical && g_stacked && !slots.empty() && barH >= iconH + rowGap + textH + barRoom + Px(6);
+    if (g_vertical && !slots.empty()) {
+        // One block per device, centred in the bar's width: icon, then the percentage (and bolt) under it.
+        width = barW;
+        int y = Px(6);
+        for (const Slot& s : slots) {
+            Piece& ic = out[s.icon];
+            Piece& lb = out[s.label];
+            int boltW = s.bolt >= 0 ? Px(2) + out[s.bolt].m.w : 0;
+            ic.px = (barW - ic.m.w) / 2;
+            ic.py = y;
+            y += ic.m.h + rowGap;
+            lb.px = (barW - lb.m.w - boltW) / 2;
+            lb.py = y;
+            if (s.bolt >= 0) {
+                out[s.bolt].px = lb.px + lb.m.w + Px(2);
+                out[s.bolt].py = y + (lb.m.h - out[s.bolt].m.h) / 2;
+            }
+            y += lb.m.h + (lb.barPct >= 0 ? barRoom : 0) + Px(8);
+        }
+        height = y;
+        return out;
+    }
+    if (stacked) {
+        // Icon on top (bolt to its right), percentage centred under it; the pair centred in the bar's height.
+        int top = (barH - (iconH + rowGap + textH + barRoom)) / 2;
+        int x = Px(8);
+        for (const Slot& s : slots) {
+            Piece& ic = out[s.icon];
+            Piece& lb = out[s.label];
+            int boltW = s.bolt >= 0 ? Px(2) + out[s.bolt].m.w : 0;
+            int slotW = std::max(ic.m.w + boltW, lb.m.w);
+            ic.px = x + (slotW - ic.m.w - boltW) / 2;
+            ic.py = top + (iconH - ic.m.h) / 2;
+            if (s.bolt >= 0) {
+                out[s.bolt].px = ic.px + ic.m.w + Px(2);
+                out[s.bolt].py = top + (iconH - out[s.bolt].m.h) / 2;
+            }
+            lb.px = x + (slotW - lb.m.w) / 2;
+            lb.py = top + iconH + rowGap;
+            x += slotW + Px(10);
+        }
+        width = x - Px(10) + Px(8);
+        return out;
+    }
     width = Px(8) * 2;
     for (auto& p : out)
         if (p.anchor < 0) width += p.m.w + p.gapAfter;
@@ -427,9 +491,8 @@ std::vector<Piece> Layout(int& width) {
 void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size) {
     RECT bar;
     GetClientRect(taskbar, &bar);
-    int H = bar.bottom - bar.top;
-    int W = 0;
-    auto pieces = Layout(W);
+    int W = 0, H = 0;
+    auto pieces = Layout(bar.right - bar.left, bar.bottom - bar.top, W, H);
     if (W <= 0 || H <= 0) return;
     Canvas cv(W, H);
 
@@ -456,20 +519,22 @@ void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size) {
     for (size_t i = 0; i < pieces.size(); i++) {
         const Piece& p = pieces[i];
         if (p.anchor < 0) {
-            xs[i] = x;
-            ys[i] = (H - p.m.h) / 2;
+            bool fixed = p.px != INT_MIN;  // stacked / vertical layout: Layout() placed it
+            xs[i] = fixed ? p.px : x;
+            ys[i] = fixed ? p.py : (H - p.m.h) / 2;
             if (p.haloR) cv.Draw(p.halo, xs[i] - p.haloR, ys[i] - p.haloR, p.color, p.haloAlpha * p.alpha / 255);
             if (p.barPct >= 0) {
-                // Text and bar are centred together; the bar spans the text's width, like Synapse's battery bar.
+                // The bar spans the text's width, like Synapse's battery bar; in the row layout text and bar
+                // are centred together.
                 int bh = std::max(2, Px(2)), gap = Px(3);
-                ys[i] = (H - (p.m.h + gap + bh)) / 2;
+                if (!fixed) ys[i] = (H - (p.m.h + gap + bh)) / 2;
                 int by = ys[i] + p.m.h + gap;
                 int fill = std::max(p.barPct > 0 ? 1 : 0, (p.barPct * p.m.w + 50) / 100);
                 for (int yy = by; yy < by + bh; yy++)
                     for (int xx = 0; xx < p.m.w; xx++)
-                        cv.Blend(x + xx, yy, xx < fill ? p.barColor : track, xx < fill ? p.alpha : 45 * p.alpha / 255);
+                        cv.Blend(xs[i] + xx, yy, xx < fill ? p.barColor : track, xx < fill ? p.alpha : 45 * p.alpha / 255);
             }
-            x += p.m.w + p.gapAfter;
+            if (!fixed) x += p.m.w + p.gapAfter;
         } else {  // caption: one-pixel outline in the taskbar's colour so it reads over the icon's lines
             xs[i] = xs[p.anchor] + p.bx;
             ys[i] = ys[p.anchor] + p.by;
@@ -734,7 +799,7 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
     if (!g_taskbar || !FindWindowExW(g_taskbar, nullptr, L"TrayNotifyWnd", nullptr)) { g_taskbar = nullptr; return false; }
     RECT tb;
     GetWindowRect(g_taskbar, &tb);
-    if (tb.bottom - tb.top > tb.right - tb.left) { g_taskbar = nullptr; return false; }  // vertical taskbar: use tray icons
+    g_vertical = tb.bottom - tb.top > tb.right - tb.left;  // left / right taskbar: devices stacked in a column
     // Windows 11's taskbar is a XAML island; on Windows 10 the task buttons live in ReBarWindow32
     // and have to be narrowed so they never slide under the widget.
     g_rebar = FindWindowExW(g_taskbar, nullptr, L"Windows.UI.Composition.DesktopWindowContentBridge", nullptr)
@@ -831,6 +896,12 @@ void SetBackground(bool on) {
     PaintAll();
 }
 
+void SetStacked(bool on) {
+    g_stacked = on;
+    PaintAll();
+    if (g_wnd) Reposition();
+}
+
 void SetMonitorChoice(const std::wstring& choice) {
     g_choice = choice.empty() ? L"all" : choice;
     SyncMirrors();  // adds, removes or hides strips right away
@@ -854,6 +925,45 @@ bool Reposition() {
     RECT tr, bar;
     GetWindowRect(tray, &tr);
     GetWindowRect(g_taskbar, &bar);
+    // The taskbar can be moved between a horizontal and a vertical edge while the app runs.
+    bool vertical = bar.bottom - bar.top > bar.right - bar.left;
+    if (vertical != g_vertical) {
+        g_vertical = vertical;
+        Paint();
+    }
+    if (g_vertical) {
+        // Left or right taskbar (PR #321): the column sits just above the notification area, centred in
+        // the bar's width.
+        RECT client{};
+        GetClientRect(g_taskbar, &client);
+        POINT anchor{ bar.left, tr.top };
+        ScreenToClient(g_taskbar, &anchor);
+        int top = anchor.y - g_size.cy - Px(2);
+        DWORD offset = 0, osz = sizeof(offset);
+        if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset", RRF_RT_REG_DWORD, nullptr, &offset,
+                         &osz) == ERROR_SUCCESS)
+            top -= Px((int)offset);
+        top = std::clamp(top, 0, (int)std::max<LONG>(0, client.bottom - g_size.cy));
+        int left = (int)std::max<LONG>(0, (client.right - g_size.cx) / 2);
+        // Windows 10: shorten the task-button area when it would reach behind the column.
+        if (g_rebar && IsWindow(g_rebar)) {
+            RECT rr{};
+            GetWindowRect(g_rebar, &rr);
+            POINT tl{ rr.left, rr.top };
+            ScreenToClient(g_taskbar, &tl);
+            if (tl.y < top && tl.y + (rr.bottom - rr.top) > top)
+                MoveWindow(g_rebar, tl.x, tl.y, rr.right - rr.left, top - tl.y, TRUE);
+        }
+        bool covered = GetWindow(g_wnd, GW_HWNDPREV) != nullptr;
+        if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) && g_lastW == g_size.cy && g_lastLeft == top)
+            return true;
+        g_lastTray = tr;
+        g_lastBar = bar;
+        g_lastW = g_size.cy;
+        g_lastLeft = top;
+        SetWindowPos(g_wnd, HWND_TOP, left, top, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        return true;
+    }
     // Right-to-left Windows (Hebrew, Arabic) mirrors the taskbar: client x runs from the screen's right
     // edge, so a window's client-space left edge is its screen-space right edge.
     bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;

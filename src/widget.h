@@ -29,6 +29,8 @@ void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip)
 void SetLightTheme(bool light);
 // Draws a rounded plate in the taskbar's colours behind the text (kept across Create/Destroy).
 void SetBackground(bool on);
+// Icon above the percentage instead of beside it, when the taskbar is tall enough (kept across Create/Destroy).
+void SetStacked(bool on);
 // Which taskbars show the strip: L"all" (default), L"main", or the id of one other monitor from
 // OtherMonitors() (then only that monitor shows it). Kept across Create/Destroy.
 void SetMonitorChoice(const std::wstring& choice);

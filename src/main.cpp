@@ -31,7 +31,7 @@ constexpr UINT PLACEHOLDER_ID = 1;
 
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
-    ID_BRAND_COLORS,
+    ID_BRAND_COLORS, ID_STACKED,
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
 };
@@ -53,6 +53,7 @@ bool g_useWidget = false;      // what is actually shown right now
 bool g_hideLastKnown = false;  // hide (last known) / asleep devices from taskbar and tray
 std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all", "main" or one monitor id
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
+bool g_stacked = false;      // icon above the percentage (menu option)
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
 
 struct TrayEntry {
@@ -181,6 +182,8 @@ void SetWidgetMonitor(const std::wstring& v) {
     SaveWidgetMonitor(v);
     widget::SetMonitorChoice(v);
 }
+bool LoadStacked() { return LoadBoolSetting(L"StackedLayout", false); }
+void SaveStacked(bool on) { SaveBoolSetting(L"StackedLayout", on); }
 bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
 void SaveBrandColors(bool on) { SaveBoolSetting(L"BrandColors", on); }
 
@@ -564,6 +567,12 @@ void RedrawAll() {
     UpdatePlaceholder();
 }
 
+void SetStacked(bool on) {
+    g_stacked = on;
+    SaveStacked(on);
+    widget::SetStacked(on);
+}
+
 void SetBrandColors(bool on) {
     g_brandColors = on;
     SaveBrandColors(on);
@@ -627,6 +636,7 @@ void ShowMenu() {
     CheckMenuRadioItem(m, ID_MODE_WIDGET, ID_MODE_TRAY, g_wantWidget ? ID_MODE_WIDGET : ID_MODE_TRAY, MF_BYCOMMAND);
     UINT bgFlags = MF_STRING | (g_widgetBackground ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
     AppendMenuW(m, bgFlags, ID_WIDGET_BACKGROUND, L"Background behind taskbar text (for transparent taskbars)");
+    AppendMenuW(m, MF_STRING | (g_stacked ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_STACKED, L"Icons above percentages (narrower)");
     // With more than one monitor: choose which taskbars show the widget (all, main only, or one monitor).
     auto monitors = widget::OtherMonitors();
     if (monitors.size() > 31) monitors.resize(31);
@@ -670,6 +680,7 @@ void ShowMenu() {
         case ID_MONITOR_ALL: SetWidgetMonitor(L"all"); break;
         case ID_MONITOR_MAIN: SetWidgetMonitor(L"main"); break;
         case ID_BRAND_COLORS: SetBrandColors(!g_brandColors); break;
+        case ID_STACKED: SetStacked(!g_stacked); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
@@ -914,6 +925,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_hideLastKnown = LoadHideLastKnown();
     g_widgetBackground = LoadWidgetBackground();
     g_brandColors = LoadBrandColors();
+    g_stacked = LoadStacked();
+    widget::SetStacked(g_stacked);
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
     g_widgetMonitor = LoadWidgetMonitor();
     widget::SetMonitorChoice(g_widgetMonitor);
