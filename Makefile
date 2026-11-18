@@ -64,6 +64,8 @@ test:
 	./build/machenike_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/niceboy_driver_test.cpp src/drivers/niceboy.cpp -o build/niceboy_driver_test.exe
 	./build/niceboy_driver_test.exe
+	$(CXX) $(CXXFLAGS) tests/redragon_evision_driver_test.cpp src/drivers/redragon_evision.cpp -o build/redragon_evision_driver_test.exe
+	./build/redragon_evision_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/alienware_driver_test.cpp src/drivers/alienware.cpp -o build/alienware_driver_test.exe
 	./build/alienware_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/mchose_modern_driver_test.cpp src/drivers/mchose_modern.cpp -o build/mchose_modern_driver_test.exe
