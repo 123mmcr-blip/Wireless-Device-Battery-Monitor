@@ -237,6 +237,9 @@ void DrawHistoryButton(const DRAWITEMSTRUCT* item) {
                                 active ? P().btnActive : P().panel;
     const COLORREF outline = disabled ? P().grid : (active || focused) ? P().blue : P().border;
     const COLORREF textColor = disabled ? P().btnDisabledText : clear ? P().red : active ? P().text : P().muted;
+    HBRUSH corners = CreateSolidBrush(P().bg);  // behind the rounded corners, instead of the button's white
+    FillRect(item->hDC, &item->rcItem, corners);
+    DeleteObject(corners);
     RoundedPanel(item->hDC, item->rcItem, background, outline, 12);
     wchar_t text[160]{};
     GetWindowTextW(item->hwndItem, text, 160);
