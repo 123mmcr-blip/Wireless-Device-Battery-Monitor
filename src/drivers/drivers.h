@@ -98,6 +98,7 @@ void PollSteelSeries(PollContext& ctx);
 void PollCorsair(PollContext& ctx);
 void PollCoolerMaster(PollContext& ctx);
 void PollPlayStation(PollContext& ctx);
+void PollSwitchPro(PollContext& ctx);  // Passive Switch Pro battery reports (057E:2009)
 void PollSteamController(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
 void PollFlydigi(PollContext& ctx);    // Vader 5 Pro vendor battery channel
