@@ -45,7 +45,7 @@ Source: "{#Root}\installer\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ig
 Name: "{autoprograms}\Wireless Battery"; Filename: "{app}\WirelessBattery.exe"
 
 [Run]
-Filename: "{app}\WirelessBattery.exe"; Description: "Start Wireless Battery now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\WirelessBattery.exe"; Description: "Start Wireless Battery now"; Flags: nowait postinstall skipifsilent; Check: not IsUpdate
 Filename: "https://ko-fi.com/krisgfx"; Description: "Enjoying Wireless Battery? Support it on Ko-fi"; Flags: shellexec postinstall unchecked skipifsilent nowait runasoriginaluser
 
 [UninstallRun]
@@ -55,12 +55,25 @@ Filename: "{app}\WirelessBattery.exe"; Parameters: "--quit"; Flags: runhidden wa
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
 
-procedure QuitRunningApp();
+function IsUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:WBUPDATE|0}') = '1';
+end;
+
+function QuitRunningApp(): Boolean;
 var
   Code: Integer;
 begin
+  Result := True;
   if FileExists(ExpandConstant('{app}\WirelessBattery.exe')) then
-    Exec(ExpandConstant('{app}\WirelessBattery.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    Result := Exec(ExpandConstant('{app}\WirelessBattery.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if IsUpdate() and not QuitRunningApp() then
+    Result := 'Wireless Battery could not close. Close it and try updating again.';
 end;
 
 function InstalledRunValue(): String;
@@ -129,9 +142,9 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssInstall then
+  if (CurStep = ssInstall) and not IsUpdate() then
     QuitRunningApp();  { upgrade: close the old version so its files can be replaced }
-  if CurStep = ssPostInstall then
+  if (CurStep = ssPostInstall) and not IsUpdate() then
   begin
     { Same value the app's own "Start with Windows" menu item writes, so the two stay in sync. }
     if WizardIsTaskSelected('autostart') then

@@ -1,10 +1,13 @@
 # Builds WirelessBattery.exe with MinGW-w64 (MSYS2 MINGW64/UCRT64 shell, or any mingw g++ on PATH).
 CXX      ?= g++
 WINDRES  ?= windres
+VERSION  ?= 0.0.0
+CHANNEL  ?= dev
+.DEFAULT_GOAL := WirelessBattery.exe
 CXXFLAGS ?= -std=c++17 -Os -Wall -Wno-missing-field-initializers -ffunction-sections -fdata-sections \
             -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00
 LDFLAGS  ?= -municode -mwindows -static -s -Wl,--gc-sections
-LIBS     := -lhid -lsetupapi -lcfgmgr32 -lole32 -loleaut32 -lcomctl32 -lgdi32 -lruntimeobject -lws2_32 -lwinhttp
+LIBS     := -lhid -lsetupapi -lcfgmgr32 -lole32 -loleaut32 -lcomctl32 -lgdi32 -lruntimeobject -lws2_32 -lwinhttp -lbcrypt -lversion
 
 SRC := $(wildcard src/*.cpp) $(wildcard src/drivers/*.cpp)
 OBJ := $(patsubst src/%.cpp,build/%.o,$(SRC)) build/app_res.o
@@ -12,18 +15,21 @@ OBJ := $(patsubst src/%.cpp,build/%.o,$(SRC)) build/app_res.o
 WirelessBattery.exe: $(OBJ)
 	$(CXX) $(LDFLAGS) $^ -o $@ $(LIBS)
 
-build/%.o: src/%.cpp $(wildcard src/*.h src/drivers/*.h)
+build/%.o: src/%.cpp $(wildcard src/*.h src/drivers/*.h) build/version.h
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -municode -c $< -o $@
 
-build/app_res.o: res/app.rc res/app.manifest res/app.ico
+build/version.h: scripts/generate-version.ps1 FORCE
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/generate-version.ps1 -Version "$(VERSION)" -Channel "$(CHANNEL)"
+
+build/app_res.o: res/app.rc res/app.manifest res/app.ico build/version.h
 	@mkdir -p build
 	$(WINDRES) -i $< -o $@ --include-dir res
 
 clean:
 	rm -rf build WirelessBattery.exe
 
-test:
+test: test-update-core test-update-win
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) tests/astro_driver_test.cpp src/drivers/astro.cpp -o build/astro_driver_test.exe
 	./build/astro_driver_test.exe
@@ -62,4 +68,17 @@ test:
 	$(CXX) -std=c++17 -O2 -Wall -Isrc tests/xenta_protocol_test.cpp src/drivers/xenta_protocol.cpp -o build/xenta_protocol_test.exe
 	./build/xenta_protocol_test.exe
 
-.PHONY: clean test
+test-update-core:
+	@mkdir -p build
+	$(CXX) -std=c++17 -O2 -Wall tests/update_core_test.cpp src/update_core.cpp -o build/update_core_test.exe
+	./build/update_core_test.exe
+
+test-update-win: build/version.h build/app_res.o
+	@mkdir -p build
+	$(CXX) -std=c++17 -O2 -Wall tests/update_win_test.cpp src/update_core.cpp build/app_res.o \
+	    -o build/update_win_test.exe -lwinhttp -lbcrypt -lcomctl32 -lversion -lole32
+	./build/update_win_test.exe
+
+FORCE:
+
+.PHONY: clean test test-update-core test-update-win FORCE

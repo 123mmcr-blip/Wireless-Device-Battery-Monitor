@@ -22,13 +22,26 @@ jobs:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc make
 
+      - name: Select version and update channel
+        shell: pwsh
+        run: |
+          $version = '0.0.0'
+          $channel = 'dev'
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+            if ($version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Unsupported release tag' }
+            if ($env:GITHUB_REPOSITORY -eq 'krisgfx9/Wireless-Device-Battery-Monitor') { $channel = 'stable' }
+          }
+          "WB_VERSION=$version" >> $env:GITHUB_ENV
+          "WB_CHANNEL=$channel" >> $env:GITHUB_ENV
+
       - name: Build WirelessBattery.exe
         shell: msys2 {0}
-        run: make
+        run: make VERSION="$WB_VERSION" CHANNEL="$WB_CHANNEL"
 
-      - name: Test Rapoo protocol and driver
+      - name: Test device protocols and Windows updater
         shell: msys2 {0}
-        run: make test
+        run: make test VERSION="$WB_VERSION" CHANNEL="$WB_CHANNEL"
 
       - name: Install Inno Setup
         shell: pwsh
@@ -37,8 +50,7 @@ jobs:
       - name: Build installer and portable zip
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.0.0' }
-          ./installer/build-installer.ps1 -Version $version
+          ./installer/build-installer.ps1 -Version $env:WB_VERSION
 
       - name: Fetch HeadsetControl source (GPL corresponding source for the bundled binary)
         shell: pwsh

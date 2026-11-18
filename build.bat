@@ -4,6 +4,11 @@ rem Every .cpp file in src\ and src\drivers\ is compiled, so a new driver needs 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 if not exist build mkdir build
+set "APP_VERSION=%~1"
+if not defined APP_VERSION set "APP_VERSION=0.0.0"
+set "APP_CHANNEL=%~2"
+if not defined APP_CHANNEL set "APP_CHANNEL=dev"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\generate-version.ps1 -Version "%APP_VERSION%" -Channel "%APP_CHANNEL%" || exit /b 1
 windres -i res\app.rc -o build\app_res.o --include-dir res || exit /b 1
 set SOURCES=
 for %%f in (src\*.cpp src\drivers\*.cpp) do set SOURCES=!SOURCES! %%f
@@ -11,5 +16,5 @@ g++ -std=c++17 -Os -municode -mwindows -static -s -ffunction-sections -fdata-sec
     -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Wall -Wno-missing-field-initializers ^
     !SOURCES! ^
     build\app_res.o -o WirelessBattery.exe ^
-    -lhid -lsetupapi -lcfgmgr32 -lole32 -loleaut32 -lcomctl32 -lgdi32 -lruntimeobject -lws2_32 -lwinhttp || exit /b 1
+    -lhid -lsetupapi -lcfgmgr32 -lole32 -loleaut32 -lcomctl32 -lgdi32 -lruntimeobject -lws2_32 -lwinhttp -lbcrypt -lversion || exit /b 1
 echo Built WirelessBattery.exe
