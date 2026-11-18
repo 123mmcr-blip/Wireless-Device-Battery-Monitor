@@ -308,7 +308,8 @@ std::wstring StatusText(const TrayEntry& e) {
     else if (e.lastPct >= 0) t = std::to_wstring(e.lastPct) + L"% (last known)";
     else t = L"unknown";
     if (!s.detail.empty() && s.percent >= 0) t += L" (" + s.detail + L")";
-    if (s.charging) t += L", charging";
+    if (!s.via.empty()) t += L" [" + s.via + L"]";
+    if (s.charging) t += L", charging";  // only confirmed charging — not USB transport alone
     if (s.asleep) t += L", asleep";
     return t;
 }
@@ -432,6 +433,8 @@ void UpdateWidget() {
         it.percent = e->st.percent >= 0 ? e->st.percent : e->lastPct;
         if (e->st.percent >= 0) it.text = e->st.levelText;
         it.charging = e->st.charging;
+        it.usbConnected = e->st.usbConnected;
+        it.wirelessLink = e->st.wirelessLink;
         it.dim = e->st.percent < 0;
         it.low = !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
@@ -574,7 +577,7 @@ void ShowMenu() {
         AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(sub, MF_STRING | (canLeft ? 0 : MF_GRAYED), base + DEV_LEFT, g_wantWidget ? L"Move left" : L"Move up");
         AppendMenuW(sub, MF_STRING | (canRight ? 0 : MF_GRAYED), base + DEV_RIGHT, g_wantWidget ? L"Move right" : L"Move down");
-        std::wstring line = e->st.name + L":  " + StatusText(*e) + L"   [" + e->st.via + L"]";
+        std::wstring line = e->st.name + L":  " + StatusText(*e);
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         keys.push_back(k);
     }

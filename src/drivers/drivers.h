@@ -46,7 +46,7 @@ bool GWolvesIsCable(USHORT pid);
 void PollGlorious(PollContext& ctx);  // also Hitscan
 void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 / HERO 68 Air keyboards (before Kysona)
 void PollDareu(PollContext& ctx);     // DAREU EM901X receiver (split feature/input collections)
-void PollDarmoshark(PollContext& ctx); // Darmoshark M3 over its 2.4 GHz receiver
+void PollDarmoshark(PollContext& ctx); // Darmoshark M3 over USB cable or 2.4 GHz receiver
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro / N9 Ultra headsets (virtual COM port)
 void PollKeychron(PollContext& ctx);  // Keychron mice, Nape Pro trackball (Link-KM receiver)
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0

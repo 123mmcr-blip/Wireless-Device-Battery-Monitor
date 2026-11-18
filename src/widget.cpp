@@ -130,6 +130,7 @@ wchar_t Glyph(DeviceKind k, bool bluetooth) {
     }
 }
 constexpr wchar_t kBolt = 0xE945;            // LightningBolt
+constexpr wchar_t kWifi = 0xE701;             // Wifi (Segoe Fluent Icons / MDL2 — same chart as Bluetooth E702)
 constexpr wchar_t kBatteryUnknown = 0xE996;  // shown when there is nothing to display
 
 // Creates a font, falling back when the preferred face is not installed (GDI would silently substitute).
@@ -226,7 +227,7 @@ std::vector<Piece> Layout(int& width) {
     Rgb red = g_light ? Rgb{ 196, 30, 40 } : Rgb{ 255, 90, 90 };
     Rgb charge = g_light ? Rgb{ 0, 120, 212 } : Rgb{ 96, 205, 255 };
     HFONT icons = MakeFont(Px(16), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
-    HFONT bolt = MakeFont(Px(11), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
+    HFONT accent = MakeFont(Px(12), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
     HFONT text = MakeFont(Px(13), FW_NORMAL, L"Segoe UI Variable Text", L"Segoe UI", Px(12));
 
     std::vector<Piece> out;
@@ -237,12 +238,18 @@ std::vector<Piece> Layout(int& width) {
         Rgb tc = it.low ? red : fg;
         out.push_back({ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons, g_light), fg, a, Px(5) });
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
-        out.push_back({ RenderMask(t, text, g_light), tc, a, it.charging ? Px(2) : 0 });
-        if (it.charging) out.push_back({ RenderMask(std::wstring(1, kBolt), bolt, g_light), charge, a, 0 });
+        // One trailing glyph: charging or USB bolt, else wireless. Never both mode icons.
+        const bool showBolt = it.charging || it.usbConnected;
+        const bool showWireless = !showBolt && it.wirelessLink;
+        out.push_back({ RenderMask(t, text, g_light), tc, a, (showBolt || showWireless) ? Px(2) : 0 });
+        if (showBolt)
+            out.push_back({ RenderMask(std::wstring(1, kBolt), accent, g_light), charge, a, 0 });
+        else if (showWireless)
+            out.push_back({ RenderMask(std::wstring(1, kWifi), accent, g_light), charge, a, 0 });
         out.back().gapAfter = i + 1 < g_items.size() ? Px(14) : 0;
     }
     DeleteObject(icons);
-    DeleteObject(bolt);
+    DeleteObject(accent);
     DeleteObject(text);
 
     width = Px(8) * 2;
