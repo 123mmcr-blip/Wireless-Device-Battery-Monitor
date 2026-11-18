@@ -106,6 +106,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollFlydigi(ctx);
     PollGameSirCyclone(ctx);
     Poll8BitDo(ctx);
+    PollBeitong(ctx);  // before the XInput fallback, which only sees the receiver as wired
     PollAirPods(ctx);  // before the Bluetooth fallback, which has no level for AirPods
     PollPhoneLink(ctx);
     PollGalaxyBuds(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
