@@ -1,5 +1,6 @@
-// AULA F75 / F87 Pro / F99 and MCHOSE (K99 V2, G75 Pro, X75 ...) wireless keyboards on the "BY" 2.4 GHz
-// receivers: 3554:FA09 (Compx, shared by both brands) and MCHOSE's own 41E4:2001.
+// AULA F75 / F87 Pro / F99, MCHOSE (K99 V2, G75 Pro, X75 ...) and Redragon Horus Pro (K618RGB-PRO)
+// wireless keyboards on the "BY" 2.4 GHz receivers: 3554:FA09 (Compx, shared by these brands) and MCHOSE's
+// own 41E4:2001.
 // The receiver exposes a 20-byte vendor collection (usage page FF02 or FF04, usage 02). Battery is a
 // 20-byte output report 0x13 carrying command 0x4A and a trailing sum checksum. The reply is
 // another 0x13 frame whose command byte, with its top bit masked, is 0x4A. Its payload starts at
@@ -77,6 +78,7 @@ const Model kModels[] = {
     { { 0x03, 0x00, 0x00, 0x00, 0x01, 0x35 }, L"MCHOSE K87" },
     { { 0x03, 0x00, 0x00, 0x00, 0x03, 0x35 }, L"MCHOSE G75 V2" },
     { { 0x0A, 0x00, 0x00, 0x00, 0x00, 0x34 }, L"MCHOSE G87 V2" },
+    { { 0x03, 0x00, 0x00, 0x00, 0x00, 0x6A }, L"Redragon Horus Pro" },
 };
 
 BYTE Sum(const std::vector<BYTE>& b, size_t n) {
