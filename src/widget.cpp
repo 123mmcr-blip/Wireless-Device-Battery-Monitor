@@ -595,7 +595,16 @@ void PositionMirror(Mirror& m) {
     if (Dpi() != m.dpi || m.size.cy != bar.bottom - bar.top) PaintMirror(m), g_dpiBar = m.bar;
     int right = 0, minLeft = bar.left;
     bool known = false;
-    if (!IsXamlTaskbar(m.bar)) {  // Windows 10: the clock is a real child window (absent when it is turned off)
+    // StartAllBack can put a full notification area on each secondary taskbar.
+    // Use its left edge, as on the primary taskbar, to clear all of the tray icons.
+    HWND tray = FindWindowExW(m.bar, nullptr, L"TrayNotifyWnd", nullptr);
+    RECT tr{};
+    if (tray && IsWindowVisible(tray) && GetWindowRect(tray, &tr) &&
+        tr.left > bar.left && tr.right <= bar.right && tr.right > tr.left &&
+        tr.bottom > bar.top && tr.top < bar.bottom) {
+        right = tr.left;
+        known = true;
+    } else if (!IsXamlTaskbar(m.bar)) {  // Windows 10: the clock is a real child window (absent when it is turned off)
         HWND clock = FindWindowExW(m.bar, nullptr, L"ClockButton", nullptr);
         RECT cr{};
         right = clock && IsWindowVisible(clock) && GetWindowRect(clock, &cr) ? cr.left : bar.right - Px(8);
