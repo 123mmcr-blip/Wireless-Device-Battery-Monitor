@@ -28,6 +28,7 @@ const Model kModels[] = {
     { 0xA860, false, L"WLMouse mouse", 0 },
     { 0xA866, false, L"WLMouse mouse", 0 },
     { 0xA867, false, L"WLMouse mouse", 0 },
+    { 0xA871, false, L"WLMouse Beast X Pro", 0xA870 },  // cable; tested on the charging Beast X Pro
     { 0xA856, true, L"WLMouse Beast X V2", 0 },  // 8K receiver; seen with a Beast X V2 Max
     { 0xA868, true, L"WLMouse Beast X Mini Pro", 0 },
     { 0xA870, true, L"WLMouse Beast X Pro", 0 },
