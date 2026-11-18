@@ -17,6 +17,7 @@
 #include "device_aliases.h"
 #include "alert_rules.h"
 #include "devices.h"
+#include "battery_history.h"
 #include "i18n.h"
 #include "labels.h"
 #include "report.h"
@@ -44,8 +45,8 @@ enum MenuId : UINT {
     ID_DEVICE_FIRST = 1000
 };
 enum DeviceCmd : UINT {
-    DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME,
-    DEV_ALERT_FIRST = 5, DEV_ALERT_DEFAULT = DEV_ALERT_FIRST + 8, DEV_ALERT_OFF, DEV_STRIDE = 16
+    DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME, DEV_HISTORY,
+    DEV_ALERT_FIRST = 6, DEV_ALERT_DEFAULT = DEV_ALERT_FIRST + 8, DEV_ALERT_OFF, DEV_STRIDE = 16
 };
 
 const wchar_t* kAppName = L"Wireless Battery";
@@ -597,6 +598,8 @@ void OnResults(std::vector<DeviceStatus>& results) {
                       alerts::ShouldNotify(s, alerts::EffectiveThreshold(g_alertOverrides, s.key), e.lowWarned);
         g_alertLatches[s.key] = e.lowWarned;
         if (g_alertLatches.size() > 256) g_alertLatches.erase(g_alertLatches.begin());
+        if (s.connected && !s.asleep && s.percent >= 0)
+            battery_history::Observe(s.key, s.percent, s.charging);
         ApplyEntry(e);
         if (notify) ShowBatteryAlert(e);
     }
@@ -809,6 +812,7 @@ void ShowMenu() {
                         base + DEV_ALERT_FIRST + i, label.c_str());
         }
         AppendMenuW(sub, MF_POPUP, (UINT_PTR)alertMenu, T(L"Battery alerts"));
+        AppendMenuW(sub, MF_STRING, base + DEV_HISTORY, T(L"Battery history..."));
         std::wstring line = DisplayName(*e) + L":  " + StatusText(*e) + L"   [" + T(e->st.via) + L"]";
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         keys.push_back(k);
@@ -908,6 +912,12 @@ void ShowMenu() {
                     case DEV_RESET_NAME: ResetDeviceName(key); break;
                     case DEV_ALERT_DEFAULT: SetAlertOverride(key, alerts::kUseDefault); break;
                     case DEV_ALERT_OFF: SetAlertOverride(key, alerts::kDisabled); break;
+                    case DEV_HISTORY: {
+                        auto it = g_entries.find(key);
+                        if (it != g_entries.end())
+                            battery_history::Show(g_hwnd, key, DisplayName(it->second));
+                        break;
+                    }
                     default: {
                         UINT slot = (cmd - ID_DEVICE_FIRST) % DEV_STRIDE;
                         if (slot >= DEV_ALERT_FIRST && slot < DEV_ALERT_FIRST + alerts::kThresholdCount)
@@ -1169,6 +1179,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     LoadOrder();
     LoadAliases();
     LoadAlertThresholds();
+    battery_history::Initialize(g_demo);
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);
