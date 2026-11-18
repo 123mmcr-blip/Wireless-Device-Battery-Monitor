@@ -20,6 +20,7 @@
 #include "devices.h"
 #include "battery_history.h"
 #include "i18n.h"
+#include "json_output.h"
 #include "labels.h"
 #include "report.h"
 #include "rename_dialog.h"
@@ -1157,9 +1158,37 @@ int ListToConsole(bool dump) {
     return 0;
 }
 
+// Machine-readable device list, shared with the Linux entry point (src/json_output.h).
+int ListJson() {
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (!out || out == INVALID_HANDLE_VALUE) {
+        if (AttachConsole(ATTACH_PARENT_PROCESS))
+            out = CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    }
+    std::string text = DevicesToJson(PollAllDevices());  // UTF-8
+    if (out && out != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        WriteFile(out, text.data(), (DWORD)text.size(), &written, nullptr);
+    }
+    return 0;
+}
+
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
+    if (cmdLine && wcsstr(cmdLine, L"--json")) return ListJson();
+    if (cmdLine && wcsstr(cmdLine, L"--help")) {
+        MessageBoxW(nullptr,
+                    L"Wireless Battery options:\n\n"
+                    L"--list   Print devices and battery levels\n"
+                    L"--json   Print a JSON array of devices and battery levels\n"
+                    L"--dump   Print every HID collection and device\n"
+                    L"--report Open the \"Request support for a device\" window\n"
+                    L"--demo   Show sample devices\n"
+                    L"--quit   Quit a running instance",
+                    L"Wireless Battery", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
     if (cmdLine && wcsstr(cmdLine, L"--list")) return ListToConsole(false);
     if (cmdLine && wcsstr(cmdLine, L"--dump")) return ListToConsole(true);
     if (cmdLine && wcsstr(cmdLine, L"--report")) {  // the "Request support for a device" window on its own

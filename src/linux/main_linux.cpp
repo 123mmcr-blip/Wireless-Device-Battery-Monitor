@@ -6,6 +6,7 @@
 #include "../platform_compat.h"
 #include "../devices.h"
 #include "../hid.h"
+#include "../json_output.h"
 
 #include <gtk/gtk.h>
 
@@ -632,6 +633,13 @@ int ListToConsole(bool dump) {
     return 0;
 }
 
+// Machine-readable device list for scripts and bar widgets. Shared with the Windows entry point.
+int ListJson() {
+    std::string out = DevicesToJson(PollAllDevices());
+    fwrite(out.data(), 1, out.size(), stdout);
+    return 0;
+}
+
 int QuitRunning() {
     GError* error = nullptr;
     GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -649,7 +657,18 @@ int QuitRunning() {
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            printf("Usage: wireless-battery [option]\n"
+                   "  (no option)  Run the tray app\n"
+                   "  --list       Print devices and battery levels, then exit\n"
+                   "  --json       Print a JSON array of devices and battery levels, then exit\n"
+                   "  --dump       Print all HID collections and devices, then exit\n"
+                   "  --quit       Ask a running instance to quit\n"
+                   "  -h, --help   Show this help\n");
+            return 0;
+        }
         if (!strcmp(argv[i], "--list")) return ListToConsole(false);
+        if (!strcmp(argv[i], "--json")) return ListJson();
         if (!strcmp(argv[i], "--dump")) return ListToConsole(true);
         if (!strcmp(argv[i], "--quit")) return QuitRunning();
     }

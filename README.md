@@ -250,12 +250,25 @@ anywhere and run `WirelessBattery.exe`.
 
 ```
 WirelessBattery.exe --list     # print every device and its battery level, then exit
+WirelessBattery.exe --json     # print a JSON array of devices and battery levels, then exit
 WirelessBattery.exe --dump     # every HID collection, HID devices that could not be opened, all USB devices (also ones
                                # without a HID interface) and Bluetooth devices; also saved to %TEMP%\WirelessBattery-dump.txt
 WirelessBattery.exe --report   # open the "Request support for a device" window
 WirelessBattery.exe --demo     # sample devices of every brand instead of real ones (screenshots, checking colors)
 WirelessBattery.exe --quit     # close the running instance
 ```
+
+The Linux build uses the same flags with `wireless-battery` instead of `WirelessBattery.exe`, and
+also accepts `--help`. `--json` prints a stable array that scripts and bar widgets can parse:
+
+```json
+[{"key":"kysona:373B:1085","name":"CX Wireless mouse","via":"2.4 GHz receiver","kind":"mouse",
+  "percent":85,"level":"","detail":"","charging":false,"asleep":false,"connected":true,
+  "millivolts":4029,"graceSec":1800}]
+```
+
+`graceSec` is how long the app keeps showing the last known level while the device is asleep.
+Adding new fields is backwards compatible.
 
 **Device not shown?** Right-click the widget or tray icon and choose **Request support for a device...**. Pick the device, check
 what will be sent (it is shown word for word: the device name, its type, its USB/HID ids and interface layout, and your optional
