@@ -62,6 +62,8 @@ test:
 	./build/alienware_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/mchose_modern_driver_test.cpp src/drivers/mchose_modern.cpp -o build/mchose_modern_driver_test.exe
 	./build/mchose_modern_driver_test.exe
+	$(CXX) $(CXXFLAGS) tests/vgn_driver_test.cpp src/drivers/vgn.cpp -o build/vgn_driver_test.exe
+	./build/vgn_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/vaxee_driver_test.cpp src/drivers/vaxee.cpp -o build/vaxee_driver_test.exe
 	./build/vaxee_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/finalmouse_driver_test.cpp src/drivers/finalmouse.cpp -o build/finalmouse_driver_test.exe
