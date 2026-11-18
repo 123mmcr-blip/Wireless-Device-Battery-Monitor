@@ -8,12 +8,14 @@
 #include <algorithm>
 #include <climits>
 #include <cstdio>
+#include <cwchar>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "device_aliases.h"
+#include "alert_rules.h"
 #include "devices.h"
 #include "i18n.h"
 #include "labels.h"
@@ -28,9 +30,11 @@ constexpr UINT WM_RESULTS = WM_APP + 2;
 constexpr UINT WM_WIDGET_CLICK = WM_APP + 3;
 constexpr UINT_PTR TIMER_DEBOUNCE = 1;
 constexpr UINT_PTR TIMER_WIDGET = 2;
+constexpr UINT_PTR TIMER_ALERT_ICON = 3;
 constexpr DWORD POLL_INTERVAL_MS = 60 * 1000;
 constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
+constexpr UINT ALERT_ICON_ID = 2;
 
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
@@ -39,7 +43,10 @@ enum MenuId : UINT {
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
 };
-enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME, DEV_STRIDE = 8 };
+enum DeviceCmd : UINT {
+    DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME,
+    DEV_ALERT_FIRST = 5, DEV_ALERT_DEFAULT = DEV_ALERT_FIRST + 8, DEV_ALERT_OFF, DEV_STRIDE = 16
+};
 
 const wchar_t* kAppName = L"Wireless Battery";
 const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -72,6 +79,8 @@ struct TrayEntry {
     HICON icon = nullptr;
 };
 std::map<std::wstring, TrayEntry> g_entries;
+std::map<std::wstring, bool> g_alertLatches;  // survive transient removal of a device
+bool g_alertIconAdded = false;  // short-lived tray icon for widget-mode notifications
 bool g_placeholder = false;
 HICON g_placeholderIcon = nullptr;
 
@@ -192,6 +201,47 @@ bool LoadBoolSetting(const wchar_t* name, bool defaultVal) {
 void SaveBoolSetting(const wchar_t* name, bool on) {
     DWORD v = on ? 1 : 0;
     RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, name, REG_DWORD, &v, sizeof(v));
+}
+
+// A REG_MULTI_SZ with one "device-key<TAB>threshold" entry per override.
+// Threshold -1 disables alerts; a missing key uses the default 15%.
+std::map<std::wstring, int> g_alertOverrides;
+
+void LoadAlertThresholds() {
+    DWORD size = 0;
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"AlertThresholds", RRF_RT_REG_MULTI_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS ||
+        size < 2 * sizeof(wchar_t) || size > 128 * 1024) return;
+    std::vector<wchar_t> buf(size / sizeof(wchar_t) + 2, 0);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"AlertThresholds", RRF_RT_REG_MULTI_SZ, nullptr, buf.data(), &size) != ERROR_SUCCESS)
+        return;
+    size_t limit = size / sizeof(wchar_t);
+    for (size_t i = 0; i < limit && buf[i];) {
+        size_t end = i;
+        while (end < limit && buf[end]) ++end;
+        if (end == limit) break;
+        std::wstring item(buf.data() + i, end - i);
+        size_t sep = item.rfind(L'\t');
+        if (sep != std::wstring::npos && sep != 0) {
+            std::wstring value = item.substr(sep + 1);
+            wchar_t* tail = nullptr;
+            long n = std::wcstol(value.c_str(), &tail, 10);
+            if (tail != value.c_str() && *tail == 0 && n >= -1 && n <= 40 && alerts::ValidOverride((int)n))
+                g_alertOverrides[item.substr(0, sep)] = (int)n;
+        }
+        i = end + 1;
+    }
+}
+
+void SaveAlertThresholds() {
+    std::wstring multi;
+    for (const auto& [key, threshold] : g_alertOverrides) {
+        multi += key + L"\t" + std::to_wstring(threshold);
+        multi.push_back(L'\0');
+    }
+    multi.push_back(L'\0');
+    if (multi.size() == 1) multi.push_back(L'\0');
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"AlertThresholds", REG_MULTI_SZ,
+                    multi.data(), (DWORD)(multi.size() * sizeof(wchar_t)));
 }
 
 bool LoadWidgetMode() { return LoadBoolSetting(L"TaskbarWidget", true); }
@@ -406,6 +456,23 @@ void TrayDelete(UINT uid) {
     Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
+void ShowBatteryAlert(TrayEntry& e) {
+    const std::wstring title = T(L"Low battery");
+    const std::wstring message = TF(L"{name} is at {percent}%",
+                                   { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(e.st.percent) } });
+    if (!g_useWidget && e.added) {
+        TrayCall(NIM_MODIFY, e.uid, e.icon, DisplayName(e) + L"\n" + StatusText(e), title.c_str(), message);
+        return;
+    }
+    // Windows notification balloons need a tray icon. Keep a temporary one in widget mode
+    // long enough for the shell to display the notification, then remove it.
+    if (!g_placeholderIcon) g_placeholderIcon = RenderIcon(L"-", -1, Foreground(), Foreground(), true);
+    TrayCall(g_alertIconAdded ? NIM_MODIFY : NIM_ADD, ALERT_ICON_ID, g_placeholderIcon,
+             L"Wireless Battery", title.c_str(), message);
+    g_alertIconAdded = true;
+    SetTimer(g_hwnd, TIMER_ALERT_ICON, 60 * 1000, nullptr);
+}
+
 void UpdatePlaceholder() {
     if (g_useWidget) {
         if (g_placeholder) { TrayDelete(PLACEHOLDER_ID); g_placeholder = false; }
@@ -445,15 +512,7 @@ void ApplyEntry(TrayEntry& e) {
     }
     std::wstring tip = DisplayName(e) + L"\n" + StatusText(e);
 
-    const wchar_t* infoTitle = nullptr;
-    std::wstring info;
-    if (charging || shown > LOW_BATTERY + 10) e.lowWarned = false;
-    if (s.connected && !charging && s.percent >= 0 && s.percent <= LOW_BATTERY && !e.lowWarned) {
-        e.lowWarned = true;
-        infoTitle = T(L"Low battery");
-        info = TF(L"{name} is at {percent}%", { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(s.percent) } });
-    }
-    TrayCall(e.added ? NIM_MODIFY : NIM_ADD, e.uid, e.icon, tip, infoTitle, info);
+    TrayCall(e.added ? NIM_MODIFY : NIM_ADD, e.uid, e.icon, tip);
     e.added = true;
 }
 
@@ -530,7 +589,16 @@ void OnResults(std::vector<DeviceStatus>& results) {
         if (s.percent >= 0) e.lastPct = s.percent;
         e.lastSeen = GetTickCount64();
         seen[s.key] = true;
+        // Evaluate even in widget mode: ApplyEntry only manages tray icons.
+        // Alert latches are kept by stable device key even if the driver briefly stops reporting it.
+        if (const auto it = g_alertLatches.find(s.key); it != g_alertLatches.end())
+            e.lowWarned = it->second;
+        bool notify = !IsHidden(s.key) &&
+                      alerts::ShouldNotify(s, alerts::EffectiveThreshold(g_alertOverrides, s.key), e.lowWarned);
+        g_alertLatches[s.key] = e.lowWarned;
+        if (g_alertLatches.size() > 256) g_alertLatches.erase(g_alertLatches.begin());
         ApplyEntry(e);
+        if (notify) ShowBatteryAlert(e);
     }
     for (auto it = g_entries.begin(); it != g_entries.end();) {
         auto& e = it->second;
@@ -609,6 +677,11 @@ void ReAddAll() {
 void SetLanguage(const std::wstring& code);
 
 void RedrawAll() {
+    if (g_alertIconAdded) {  // alert icon shares the placeholder's HICON
+        KillTimer(g_hwnd, TIMER_ALERT_ICON);
+        TrayDelete(ALERT_ICON_ID);
+        g_alertIconAdded = false;
+    }
     if (g_placeholderIcon) {
         DestroyIcon(g_placeholderIcon);
         g_placeholderIcon = nullptr;
@@ -671,6 +744,17 @@ void ResetDeviceName(const std::wstring& key) {
     UpdateWidget();
 }
 
+void SetAlertOverride(const std::wstring& key, int threshold) {
+    if (threshold == alerts::kUseDefault) g_alertOverrides.erase(key);
+    else if (alerts::ValidOverride(threshold)) g_alertOverrides[key] = threshold;
+    else return;
+    SaveAlertThresholds();
+    g_alertLatches.erase(key);
+    auto it = g_entries.find(key);
+    if (it != g_entries.end()) it->second.lowWarned = false;
+    SetEvent(g_refreshEvt);  // reconsider with a fresh reading; never alert from stale data
+}
+
 // Swaps a shown device with its neighbour (dir -1 = left, +1 = right) and remembers the new order.
 void MoveEntry(const std::wstring& key, int dir) {
     std::vector<TrayEntry*> list = OrderedEntries(true);
@@ -711,6 +795,20 @@ void ShowMenu() {
         AppendMenuW(sub, MF_STRING, base + DEV_RENAME, T(L"Rename device..."));
         AppendMenuW(sub, MF_STRING | (g_aliases.count(k) ? 0 : MF_GRAYED),
                     base + DEV_RESET_NAME, T(L"Reset to original name"));
+        HMENU alertMenu = CreatePopupMenu();
+        int selectedThreshold = alerts::OverrideFor(g_alertOverrides, k);
+        AppendMenuW(alertMenu, MF_STRING | (selectedThreshold == alerts::kUseDefault ? MF_CHECKED : 0),
+                    base + DEV_ALERT_DEFAULT, T(L"Use default (15%)"));
+        AppendMenuW(alertMenu, MF_STRING | (selectedThreshold == alerts::kDisabled ? MF_CHECKED : 0),
+                    base + DEV_ALERT_OFF, T(L"Disable notifications"));
+        AppendMenuW(alertMenu, MF_SEPARATOR, 0, nullptr);
+        for (int i = 0; i < alerts::kThresholdCount; ++i) {
+            int level = alerts::kThresholds[i];
+            std::wstring label = std::to_wstring(level) + L"%";
+            AppendMenuW(alertMenu, MF_STRING | (selectedThreshold == level ? MF_CHECKED : 0),
+                        base + DEV_ALERT_FIRST + i, label.c_str());
+        }
+        AppendMenuW(sub, MF_POPUP, (UINT_PTR)alertMenu, T(L"Battery alerts"));
         std::wstring line = DisplayName(*e) + L":  " + StatusText(*e) + L"   [" + T(e->st.via) + L"]";
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         keys.push_back(k);
@@ -808,6 +906,14 @@ void ShowMenu() {
                     case DEV_RIGHT:  MoveEntry(key, +1); break;
                     case DEV_RENAME: RenameDevice(key); break;
                     case DEV_RESET_NAME: ResetDeviceName(key); break;
+                    case DEV_ALERT_DEFAULT: SetAlertOverride(key, alerts::kUseDefault); break;
+                    case DEV_ALERT_OFF: SetAlertOverride(key, alerts::kDisabled); break;
+                    default: {
+                        UINT slot = (cmd - ID_DEVICE_FIRST) % DEV_STRIDE;
+                        if (slot >= DEV_ALERT_FIRST && slot < DEV_ALERT_FIRST + alerts::kThresholdCount)
+                            SetAlertOverride(key, alerts::kThresholds[slot - DEV_ALERT_FIRST]);
+                        break;
+                    }
                 }
             }
     }
@@ -877,6 +983,8 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == g_taskbarCreatedMsg && msg != 0) {  // Explorer restarted
         widget::Destroy();
         g_useWidget = false;
+        g_alertIconAdded = false;
+        KillTimer(g_hwnd, TIMER_ALERT_ICON);
         ReAddAll();
         Reconcile();
         return 0;
@@ -910,6 +1018,10 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_TIMER:
             if (wp == TIMER_DEBOUNCE) { KillTimer(h, TIMER_DEBOUNCE); SetEvent(g_refreshEvt); }
             if (wp == TIMER_WIDGET) Reconcile();
+            if (wp == TIMER_ALERT_ICON) {
+                KillTimer(h, TIMER_ALERT_ICON);
+                if (g_alertIconAdded) { TrayDelete(ALERT_ICON_ID); g_alertIconAdded = false; }
+            }
             return 0;
         case WM_SETTINGCHANGE:
             if (lp && !lstrcmpW((LPCWSTR)lp, L"ImmersiveColorSet")) {
@@ -919,6 +1031,8 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_DESTROY:
             KillTimer(h, TIMER_WIDGET);
+            KillTimer(h, TIMER_ALERT_ICON);
+            if (g_alertIconAdded) { TrayDelete(ALERT_ICON_ID); g_alertIconAdded = false; }
             widget::Destroy();
             SetEvent(g_stopEvt);
             if (g_worker) WaitForSingleObject(g_worker, 5000);
@@ -1054,6 +1168,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     LoadHidden();
     LoadOrder();
     LoadAliases();
+    LoadAlertThresholds();
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);
