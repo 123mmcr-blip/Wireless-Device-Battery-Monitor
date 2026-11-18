@@ -149,6 +149,7 @@ void PollPhoneLink(PollContext& ctx);  // phone linked with Microsoft Phone Link
 void PollGalaxyBuds(PollContext& ctx); // Samsung Galaxy Buds (Bluetooth RFCOMM, not HID)
 void PollMoondrop(PollContext& ctx);   // MOONDROP GM01 Pro headset (WalkPlay 2.4 GHz dongle)
 void PollAlienware(PollContext& ctx);  // Alienware AW920H headset on its 2.4 GHz dongle (413C:A515)
+void PollScyrox(PollContext& ctx);        // Scyrox V12M on its 2.4 GHz receiver (395A:0006), read-only profile read
 // Fallbacks.
 void PollHeadsetControl(PollContext &ctx); // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext &ctx);
