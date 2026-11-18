@@ -81,6 +81,7 @@ void PollBarracudaPro(PollContext& ctx);  // Razer Barracuda Pro (1532:053A), be
 void PollSteelSeriesElite(PollContext& ctx);  // SteelSeries Arctis Nova Elite base station (1038:2244)
 void PollAudeze(PollContext& ctx);        // Audeze Maxwell (VID 3329) dongle or cable
 void PollEndorfy(PollContext& ctx);       // ENDORFY Viro Wireless dongle (3738:0072), Airoha RACE battery query
+void PollTurtleBeach(PollContext& ctx);   // Turtle Beach Stealth 700 Gen 3 (10F5:2251 / 2262 transmitters, 2253 cable)
 void PollNzxt(PollContext& ctx);          // NZXT Lift Elite Wireless (1E71:2101 / 2129)
 void PollPlantronics(PollContext& ctx);   // Poly / Plantronics headsets behind the BT600 adapter (047F)
 void PollVaxee(PollContext& ctx);     // VAXEE 4K receiver / NP-01S V2 cable, read-only battery commands

@@ -101,6 +101,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollSteelSeries(ctx);
     PollAudeze(ctx);
     PollEndorfy(ctx);
+    PollTurtleBeach(ctx);
     PollNzxt(ctx);
     PollPlantronics(ctx);
     PollCorsair(ctx);
