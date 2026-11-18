@@ -88,5 +88,7 @@ test:
 	./build/brands_test.exe
 	$(CXX) -std=c++17 -O2 -Wall tests/xbox_bluetooth_identity_test.cpp -o build/xbox_bluetooth_identity_test.exe
 	./build/xbox_bluetooth_identity_test.exe
+	$(CXX) $(CXXFLAGS) tests/jabra_driver_test.cpp src/drivers/jabra.cpp -o build/jabra_driver_test.exe
+	./build/jabra_driver_test.exe
 
 .PHONY: clean test

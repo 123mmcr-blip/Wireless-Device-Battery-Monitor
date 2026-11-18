@@ -97,7 +97,7 @@ void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle
 void PollViaDongle(PollContext& ctx);  // 36B0:3002 dongle (PMO Hub or VIA firmware) and PMO Hub keyboards on their cable (Wave 75, Aurora 80, P75, PMO 80)
 void PollSemico(PollContext& ctx);    // Semico 1A2C keyboards (Attack Shark X98, AJAZZ AK820 Max Plus) on 8FFF / A034 / A036
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
-void PollJabra(PollContext& ctx);     // Jabra headsets behind a Link 380 / 390 dongle
+void PollJabra(PollContext& ctx);     // Jabra GNP headsets, on USB or behind a Link dongle
 void PollJbl(PollContext& ctx);       // JBL Quantum wireless headsets (HIDV1 and HIDV3)
 void PollRog(PollContext& ctx);       // ASUS ROG keyboards, mice and the Pelta headset
 void PollZowie(PollContext& ctx);     // BenQ ZOWIE EC-CW / DW / U2 mice
