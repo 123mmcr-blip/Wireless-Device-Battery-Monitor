@@ -112,6 +112,23 @@ struct Stats {
     int64_t lastTime = 0;
 };
 
+// Count, first/last and lowest/highest level of points sorted by time.
+inline Stats Summarize(const std::vector<Sample>& points) {
+    Stats st;
+    st.count = points.size();
+    if (points.empty()) return st;
+    st.first = points.front().percent;
+    st.last = points.back().percent;
+    st.firstTime = points.front().timestamp;
+    st.lastTime = points.back().timestamp;
+    st.lowest = st.highest = points.front().percent;
+    for (const auto& p : points) {
+        st.lowest = std::min(st.lowest, p.percent);
+        st.highest = std::max(st.highest, p.percent);
+    }
+    return st;
+}
+
 class Store {
 public:
     std::vector<Sample> samples;
@@ -172,22 +189,7 @@ public:
         return out;
     }
 
-    Stats Summarize(const std::wstring& key, int64_t since, int64_t now) const {
-        Stats st;
-        const auto points = For(key, since, now);
-        st.count = points.size();
-        if (points.empty()) return st;
-        st.first = points.front().percent;
-        st.last = points.back().percent;
-        st.firstTime = points.front().timestamp;
-        st.lastTime = points.back().timestamp;
-        st.lowest = st.highest = points.front().percent;
-        for (const auto& p : points) {
-            st.lowest = std::min(st.lowest, p.percent);
-            st.highest = std::max(st.highest, p.percent);
-        }
-        return st;
-    }
+    Stats Summarize(const std::wstring& key, int64_t since, int64_t now) const;
 
     void Clear(const std::wstring& key) {
         samples.erase(std::remove_if(samples.begin(), samples.end(), [&](const Sample& s) {
@@ -195,4 +197,7 @@ public:
         }), samples.end());
     }
 };
+inline Stats Store::Summarize(const std::wstring& key, int64_t since, int64_t now) const {
+    return battery_history::Summarize(For(key, since, now));
+}
 } // namespace battery_history

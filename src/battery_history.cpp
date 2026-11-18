@@ -130,22 +130,6 @@ std::vector<Sample> Visible(int64_t now) {
     return points;
 }
 
-Stats Analyze(const std::vector<Sample>& points) {
-    Stats st;
-    st.count = points.size();
-    if (points.empty()) return st;
-    st.first = points.front().percent;
-    st.last = points.back().percent;
-    st.lowest = st.highest = st.first;
-    st.firstTime = points.front().timestamp;
-    st.lastTime = points.back().timestamp;
-    for (const Sample& p : points) {
-        st.lowest = std::min(st.lowest, p.percent);
-        st.highest = std::max(st.highest, p.percent);
-    }
-    return st;
-}
-
 // Battery history viewer: DPI-aware, dark, compact metrics and conservative discharge ETA.
 // Follows the Windows app theme (AppsUseLightTheme), like the rest of the app.
 struct Palette {
@@ -307,7 +291,7 @@ void Paint(HWND w) {
     const int margin = Ui(w, 24);
     const int64_t now = UtcNow();
     const auto points = Visible(now);
-    const Stats stats = Analyze(points);
+    const Stats stats = Summarize(points);
     const auto forecastPoints = g_demo ? DemoSamples(now) : g_store.For(g_key, now - kRetentionSeconds, now);
     const RuntimeEstimate forecast = EstimateRuntime(forecastPoints, now);
 
