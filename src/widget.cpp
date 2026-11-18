@@ -11,6 +11,7 @@ HWND g_wnd, g_taskbar, g_tip, g_notify, g_rebar;
 UINT g_clickMsg;
 bool g_light, g_hover;
 bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
+widget::Position g_position = widget::Position::NotificationRight;
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
@@ -70,7 +71,11 @@ struct Span {
     bool hasClock = false;   // the clock can be turned off on secondary taskbars
     int clockLeft = 0;       // screen x
     bool hasTasks = false;
+    int tasksLeft = 0;       // left edge of the first task button
     int tasksRight = 0;      // right edge of the last task button left of the clock (screen x)
+    bool hasWidgets = false;
+    int widgetsLeft = 0;
+    int widgetsRight = 0;
 };
 std::vector<Span> g_spans;   // guarded by g_wbLock
 bool g_wbMirrors;            // guarded by g_wbLock: measure secondary taskbars too
@@ -94,6 +99,23 @@ Span MeasureSpan(IUIAutomation* uia, HWND bar) {
     if (!GetWindowRect(bar, &br) || FAILED(uia->ElementFromHandle(bar, &root)) || !root) return s;
     s.measured = true;
     auto inBar = [&](const RECT& r) { return r.right > r.left && r.left >= br.left && r.right <= br.right; };
+    if (IUIAutomationCondition* widgets = StringCondition(uia, UIA_AutomationIdPropertyId, L"WidgetsButton")) {
+        IUIAutomationElementArray* all = nullptr;
+        int n = 0;
+        if (SUCCEEDED(root->FindAll(TreeScope_Descendants, widgets, &all)) && all && SUCCEEDED(all->get_Length(&n)))
+            for (int i = 0; i < n; i++) {
+                IUIAutomationElement* el = nullptr;
+                RECT r{};
+                if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r)) {
+                    s.widgetsLeft = r.left;
+                    s.widgetsRight = r.right;
+                    s.hasWidgets = true;
+                }
+                if (el) el->Release();
+            }
+        if (all) all->Release();
+        widgets->Release();
+    }
     if (IUIAutomationCondition* clock = StringCondition(uia, UIA_AutomationIdPropertyId, L"SystemTrayIcon")) {
         IUIAutomationElementArray* all = nullptr;
         int n = 0;
@@ -120,6 +142,8 @@ Span MeasureSpan(IUIAutomation* uia, HWND bar) {
                 RECT r{};
                 if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r) &&
                     (!s.hasClock || r.right <= s.clockLeft) && (!s.hasTasks || r.right > s.tasksRight)) {
+                    if (!s.hasTasks || r.left < s.tasksLeft)
+                        s.tasksLeft = r.left;
                     s.tasksRight = r.right;
                     s.hasTasks = true;
                 }
@@ -176,6 +200,8 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
         bool mirrors = g_wbMirrors;
         ReleaseSRWLockShared(&g_wbLock);
         std::vector<Span> spans;
+        if (bar && uia)
+            spans.push_back(MeasureSpan(uia, bar));
         if (bar && mirrors && uia)
             for (HWND t = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); t;
                  t = FindWindowExW(nullptr, t, L"Shell_SecondaryTrayWnd", nullptr))
@@ -211,6 +237,40 @@ RECT WidgetsButtonRect() {
     RECT r = g_wbRectBar && g_wbRectBar == g_wbTaskbar ? g_wbRect : RECT{};
     ReleaseSRWLockShared(&g_wbLock);
     return r;
+}
+
+// Returns the leftmost safe native boundary for "before taskbar apps".
+// Widgets/Weather are preferred when present; task buttons are the fallback.
+int BeforeAppTarget(HWND bar) {
+    RECT br{};
+    if (!bar || !GetWindowRect(bar, &br)) return INT_MIN;
+
+    if (bar == g_taskbar) {
+        RECT widgets = WidgetsButtonRect();
+        if (widgets.right > widgets.left && widgets.left >= br.left && widgets.right <= br.right)
+            return widgets.left;
+    }
+
+    AcquireSRWLockShared(&g_wbLock);
+    for (const auto& s : g_spans)
+        if (s.bar == bar && s.measured) {
+            if (s.hasWidgets) {
+                int target = s.widgetsLeft;
+                ReleaseSRWLockShared(&g_wbLock);
+                return target;
+            }
+        }
+    ReleaseSRWLockShared(&g_wbLock);
+
+    AcquireSRWLockShared(&g_wbLock);
+    for (const auto& s : g_spans)
+        if (s.bar == bar && s.measured && s.hasTasks) {
+            int target = s.tasksLeft;
+            ReleaseSRWLockShared(&g_wbLock);
+            return target;
+        }
+    ReleaseSRWLockShared(&g_wbLock);
+    return INT_MIN;
 }
 
 void ApplyTipTheme() {
@@ -429,31 +489,75 @@ void HideMirror(Mirror& m) {
 // buttons: never guess and cover something.
 void PositionMirror(Mirror& m) {
     RECT bar{};
-    if (!GetWindowRect(m.bar, &bar) || (GetWindowLongW(m.bar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL)) { HideMirror(m); return; }
+    if (!GetWindowRect(m.bar, &bar)) { HideMirror(m); return; }
     g_dpiBar = m.bar;
     if (Dpi() != m.dpi || m.size.cy != bar.bottom - bar.top) PaintMirror(m), g_dpiBar = m.bar;
     int right = 0, minLeft = bar.left;
+    int left = bar.left + Px(8);
     bool known = false;
     if (!IsXamlTaskbar(m.bar)) {  // Windows 10: the clock is a real child window (absent when it is turned off)
         HWND clock = FindWindowExW(m.bar, nullptr, L"ClockButton", nullptr);
         RECT cr{};
         right = clock && IsWindowVisible(clock) && GetWindowRect(clock, &cr) ? cr.left : bar.right - Px(8);
-        known = true;
+        if (g_position == widget::Position::BeforeAppButtons) {
+            HWND rebar = FindWindowExW(m.bar, nullptr, L"ReBarWindow32", nullptr);
+            RECT rr{};
+            if (rebar && GetWindowRect(rebar, &rr)) {
+                left = rr.left - m.size.cx - Px(2);
+                known = left >= bar.left;
+            }
+        } else {
+            known = true;
+        }
     } else {
+        bool beforeApps = g_position == widget::Position::BeforeAppButtons;
         AcquireSRWLockShared(&g_wbLock);
         for (const auto& s : g_spans)
             if (s.bar == m.bar && s.measured) {
                 right = s.hasClock ? s.clockLeft : bar.right - Px(8);
-                if (s.hasTasks) minLeft = s.tasksRight + Px(4);
-                known = true;
+                if (s.hasTasks && g_position != widget::Position::BeforeAppButtons)
+                    minLeft = s.tasksRight + Px(4);
+                if (g_position == widget::Position::LeftEdge) {
+                    left = bar.left + Px(8);
+                    known = true;
+                } else if (g_position == widget::Position::NotificationRight) {
+                    known = true;
+                }
             }
         ReleaseSRWLockShared(&g_wbLock);
+        if (beforeApps) {
+            int target = BeforeAppTarget(m.bar);
+            if (target != INT_MIN) {
+                left = target - m.size.cx - Px(4);
+                known = left >= bar.left;
+            }
+        }
     }
     DWORD offset = 0, sz = sizeof(offset);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset", RRF_RT_REG_DWORD, nullptr, &offset, &sz) ==
         ERROR_SUCCESS)
         right -= Px((int)offset);
-    int left = right - m.size.cx - Px(2);
+    if (g_position == widget::Position::LeftEdge) {
+        left += Px((int)offset);
+        if (IsXamlTaskbar(m.bar)) {
+            AcquireSRWLockShared(&g_wbLock);
+            for (const auto& s : g_spans)
+                if (s.bar == m.bar && s.measured && s.hasTasks &&
+                    left + m.size.cx + Px(2) > s.tasksLeft)
+                    known = false;
+            ReleaseSRWLockShared(&g_wbLock);
+        } else {
+            HWND rebar = FindWindowExW(m.bar, nullptr, L"ReBarWindow32", nullptr);
+            RECT rr{};
+            if (rebar && GetWindowRect(rebar, &rr) &&
+                left + m.size.cx + Px(2) > rr.left)
+                known = false;
+        }
+    } else if (g_position == widget::Position::BeforeAppButtons) {
+        // No custom offset: it must remain adjacent to the native boundary.
+    } else {
+        left = right - m.size.cx - Px(2);
+    }
     g_dpiBar = nullptr;
     if (!known || m.size.cx <= 0 || left < minLeft) { HideMirror(m); return; }
     POINT p{ left, bar.top };
@@ -738,6 +842,12 @@ void SetBackground(bool on) {
     PaintAll();
 }
 
+void SetPosition(widget::Position position) {
+    g_position = position;
+    if (g_wnd) Reposition();
+    for (auto& m : g_mirrors) PositionMirror(m);
+}
+
 void SetMonitorChoice(const std::wstring& choice) {
     g_choice = choice.empty() ? L"all" : choice;
     SyncMirrors();  // adds, removes or hides strips right away
@@ -761,6 +871,96 @@ bool Reposition() {
     RECT tr, bar;
     GetWindowRect(tray, &tr);
     GetWindowRect(g_taskbar, &bar);
+    DWORD customOffset = 0, sz = sizeof(customOffset);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset",
+                     RRF_RT_REG_DWORD, nullptr, &customOffset, &sz) != ERROR_SUCCESS)
+        customOffset = 0;
+
+    if (g_position == widget::Position::LeftEdge) {
+        bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
+        int screenLeft = rtl ? bar.right - Px(8) - g_size.cx : bar.left + Px(8);
+        screenLeft += Px((int)customOffset);
+        POINT p{ screenLeft, bar.top };
+        ScreenToClient(g_taskbar, &p);
+        int left = p.x;
+
+        bool collides = false;
+        if (IsXamlTaskbar(g_taskbar)) {
+            AcquireSRWLockShared(&g_wbLock);
+            for (const auto& s : g_spans)
+                if (s.bar == g_taskbar && s.measured && s.hasTasks &&
+                    left + g_size.cx + Px(2) > s.tasksLeft)
+                    collides = true;
+            ReleaseSRWLockShared(&g_wbLock);
+        } else if (g_rebar && IsWindow(g_rebar)) {
+            RECT rr{};
+            if (GetWindowRect(g_rebar, &rr) && left + g_size.cx + Px(2) > rr.left)
+                collides = true;
+        }
+        if (collides) return true;
+
+        if (g_rebar && IsWindow(g_rebar)) {
+            RECT rr;
+            if (GetWindowRect(g_rebar, &rr)) {
+                POINT tl{ rr.left, rr.top };
+                ScreenToClient(g_taskbar, &tl);
+                int widgetRight = left + g_size.cx + Px(2);
+                if (!rtl && tl.x < widgetRight && rr.right > rr.left)
+                    MoveWindow(g_rebar, widgetRight, tl.y, rr.right - rr.left - (widgetRight - tl.x), rr.bottom - rr.top, TRUE);
+            }
+        }
+
+        bool covered = GetWindow(g_wnd, GW_HWNDPREV) != nullptr;
+        if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) &&
+            g_lastW == g_size.cx && g_lastLeft == left)
+            return true;
+        g_lastTray = tr;
+        g_lastBar = bar;
+        g_lastW = g_size.cx;
+        g_lastLeft = left;
+        SetWindowPos(g_wnd, HWND_TOP, left, 0, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        return true;
+    }
+
+    if (g_position == widget::Position::BeforeAppButtons) {
+        int target = BeforeAppTarget(g_taskbar);
+        int screenLeft = target;
+        if (target == INT_MIN && g_rebar && IsWindow(g_rebar)) {
+            RECT rr;
+            if (GetWindowRect(g_rebar, &rr))
+                screenLeft = rr.left - g_size.cx - Px(2);
+        }
+
+        if (screenLeft == INT_MIN) return true;
+        if (target != INT_MIN)
+            screenLeft = target - g_size.cx - Px(4);
+        POINT p{ screenLeft, bar.top };
+        ScreenToClient(g_taskbar, &p);
+        int left = p.x;
+
+        if (g_rebar && IsWindow(g_rebar)) {
+            RECT rr;
+            if (GetWindowRect(g_rebar, &rr)) {
+                POINT tl{ rr.left, rr.top };
+                ScreenToClient(g_taskbar, &tl);
+                int widgetRight = left + g_size.cx + Px(2);
+                if (tl.x < widgetRight && rr.right > rr.left)
+                    MoveWindow(g_rebar, widgetRight, tl.y, rr.right - rr.left - (widgetRight - tl.x), rr.bottom - rr.top, TRUE);
+            }
+        }
+
+        bool covered = GetWindow(g_wnd, GW_HWNDPREV) != nullptr;
+        if (!covered && EqualRect(&tr, &g_lastTray) && EqualRect(&bar, &g_lastBar) &&
+            g_lastW == g_size.cx && g_lastLeft == left)
+            return true;
+        g_lastTray = tr;
+        g_lastBar = bar;
+        g_lastW = g_size.cx;
+        g_lastLeft = left;
+        SetWindowPos(g_wnd, HWND_TOP, left, 0, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        return true;
+    }
+
     // Right-to-left Windows (Hebrew, Arabic) mirrors the taskbar: client x runs from the screen's right
     // edge, so a window's client-space left edge is its screen-space right edge.
     bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
@@ -789,11 +989,8 @@ bool Reposition() {
 
 
     // Optional user override in DPI-independent pixels (e.g. for custom padding).
-    DWORD customOffset = 0, sz = sizeof(customOffset);
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset",
-                     RRF_RT_REG_DWORD, nullptr, &customOffset, &sz) == ERROR_SUCCESS) {
+    if (customOffset != 0)
         left -= Px((int)customOffset);
-    }
 
     // Windows 10: Explorer re-expands the task buttons on its own layout passes; narrow them again.
     if (g_rebar && IsWindow(g_rebar)) {
