@@ -4,6 +4,7 @@ param([string]$Version = "1.0.0")
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
+& (Join-Path $root 'scripts\verify-windows-version.ps1') -ExpectedVersion $Version
 
 # Bundled HeadsetControl: pinned release, verified against the SHA-256 GitHub publishes for it.
 $hscVersion = "4.3.0"
