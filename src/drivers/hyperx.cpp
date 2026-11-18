@@ -1,6 +1,6 @@
 // HyperX wireless headsets and Pulsefire Haste 2 mice (HP VID 03F0, older Kingston VID 0951).
-// Protocols: Pulsefire Haste 2 Core Wireless (03F0:0AB5) and Haste 2 Wireless (03F0:0F98) verified on hardware,
-// see HasteWireless;
+// Protocols: Pulsefire Haste 2 Core Wireless (03F0:0AB5), Haste 2 Wireless (03F0:0F98) and Haste 2 Mini (03F0:0DA0)
+// verified on hardware, see HasteWireless;
 // Cloud III Wireless verified on hardware (03F0:0C9D) and github.com/Medprj/HyperXWM;
 // Cloud III S from github.com/LennardKittner/HyperHeadset; Cloud Stinger Core from
 // github.com/davidsantanaalves/HyperBatteryMonitor (also Cloud Core Wireless DTS 0951:173F, verified on hardware);
@@ -122,9 +122,10 @@ bool CloudAlpha2(const HidColl& c, DeviceStatus& s) {
 
 // Pulsefire Haste 2 (Core) Wireless: NGENUITY's read-only battery query, the same 52 01 / 50 02 pair as
 // Cloud Alpha 2, on the dongle's vendor collection (interface 2). 64-byte reports.
-// From github.com/PMarinov1994/ngenuity-linux-cli (Haste 2 Wireless). Verified on a Core Wireless (03F0:0AB5) and on
-// a Haste 2 Wireless (03F0:0F98, MI_02 FF00:0001, 64-byte reports; level matched NGENUITY, PR #312 by uzumakiprime);
-// the 0D97 dongle is untested. Protocol notes: docs/hyperx_haste_2.md.
+// From github.com/PMarinov1994/ngenuity-linux-cli (Haste 2 Wireless). Verified on a Core Wireless (03F0:0AB5), on
+// a Haste 2 Wireless (03F0:0F98, MI_02 FF00:0001, 64-byte reports; level matched NGENUITY, PR #312 by uzumakiprime)
+// and on a Haste 2 Mini (03F0:0DA0, level matches NGENUITY); the 0D97 dongle is untested. Protocol notes:
+// docs/hyperx_haste_2.md.
 bool HasteWireless(const HidColl& c, DeviceStatus& s) {
     HidDev d;
     if (!d.Open(c)) return false;
@@ -151,7 +152,9 @@ bool HasteWireless(const HidColl& c, DeviceStatus& s) {
     polled = true;
     bool settled = now - linkUpAt >= kSettleMs;
 
-    s = Base(c.pid, c.pid == 0x0AB5 ? L"HyperX Pulsefire Haste 2 Core Wireless" : L"HyperX Pulsefire Haste 2 Wireless");
+    s = Base(c.pid, c.pid == 0x0AB5 ? L"HyperX Pulsefire Haste 2 Core Wireless"
+                 : c.pid == 0x0DA0 ? L"HyperX Pulsefire Haste 2 Mini"
+                 : L"HyperX Pulsefire Haste 2 Wireless");
     s.kind = DeviceKind::Mouse;
     s.connected = linked;
     if (gotBattery && settled) {  // an unsettled reading stays unknown, so the tray keeps the last value dimmed
@@ -280,8 +283,9 @@ const Model kModels[] = {
     }, Cloud2Kingston },
     { 0x03F0, { 0x098D }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudAlpha },
     { 0x03F0, { 0x08BE }, [](const HidColl& c) { return c.page() == 0xFF13 && c.usage() == 0xFF00; }, CloudAlpha2 },
-    // Pulsefire Haste 2 Wireless (0F98 tested, 0D97 untested) and Haste 2 Core Wireless (0AB5 tested) dongles.
-    { 0x03F0, { 0x0AB5, 0x0D97, 0x0F98 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 2 && c.inLen() >= 8; }, HasteWireless },
+    // Pulsefire Haste 2 Wireless (0F98 tested, 0D97 untested), Haste 2 Core Wireless (0AB5 tested) and Haste 2 Mini
+    // (0DA0 tested) dongles.
+    { 0x03F0, { 0x0AB5, 0x0D97, 0x0F98, 0x0DA0 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 2 && c.inLen() >= 8; }, HasteWireless },
     { 0x0951, { 0x16C4, 0x1723, 0x1749 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },
     { 0x03F0, { 0x0E90 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },  // Cloud Flight (HP)
     // Cloud Stinger Core Wireless: PlayStation receivers (HP 0A93, Kingston 1713) and the original Kingston receiver, and the Cloud Core Wireless DTS receiver (Kingston 173F)
