@@ -147,16 +147,26 @@ Stats Analyze(const std::vector<Sample>& points) {
 }
 
 // Battery history viewer: DPI-aware, dark, compact metrics and conservative discharge ETA.
-constexpr COLORREF kBg = RGB(12, 17, 28);
-constexpr COLORREF kPanel = RGB(22, 30, 45);
-constexpr COLORREF kChart = RGB(15, 23, 37);
-constexpr COLORREF kBorder = RGB(47, 63, 83);
-constexpr COLORREF kGrid = RGB(42, 55, 74);
-constexpr COLORREF kText = RGB(232, 240, 252);
-constexpr COLORREF kMuted = RGB(165, 182, 202);
-constexpr COLORREF kBlue = RGB(91, 166, 255);
-constexpr COLORREF kGreen = RGB(59, 215, 158);
-constexpr COLORREF kRed = RGB(255, 132, 147);
+// Follows the Windows app theme (AppsUseLightTheme), like the rest of the app.
+struct Palette {
+    COLORREF bg, panel, chart, border, grid, text, muted, blue, green, red, btnDown, btnActive, btnDisabledText;
+};
+constexpr Palette kDark = { RGB(12, 17, 28), RGB(22, 30, 45), RGB(15, 23, 37), RGB(47, 63, 83), RGB(42, 55, 74),
+                            RGB(232, 240, 252), RGB(165, 182, 202), RGB(91, 166, 255), RGB(59, 215, 158),
+                            RGB(255, 132, 147), RGB(38, 59, 83), RGB(31, 67, 112), RGB(102, 117, 136) };
+constexpr Palette kLight = { RGB(243, 245, 248), RGB(255, 255, 255), RGB(250, 251, 253), RGB(209, 215, 224),
+                             RGB(228, 232, 238), RGB(24, 32, 44), RGB(92, 104, 120), RGB(0, 103, 192),
+                             RGB(16, 137, 62), RGB(196, 43, 28), RGB(214, 226, 240), RGB(224, 236, 252),
+                             RGB(160, 168, 180) };
+bool g_light = false;
+const Palette& P() { return g_light ? kLight : kDark; }
+
+bool AppsUseLightTheme() {
+    DWORD v = 1, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                 L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return v != 0;
+}
 constexpr int64_t kMaxConnectedGap = 4 * 3600;
 
 HFONT g_uiFont = nullptr;
@@ -169,13 +179,14 @@ int Ui(HWND w, int logical) {
     return MulDiv(logical, dpi ? static_cast<int>(dpi) : 96, 96);
 }
 
-void DarkTitleBar(HWND w) {
+void ApplyTheme(HWND w) {
+    g_light = AppsUseLightTheme();
     HMODULE lib = LoadLibraryExW(L"dwmapi.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!lib) return;
     using AttributeFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
     auto fn = reinterpret_cast<AttributeFn>(GetProcAddress(lib, "DwmSetWindowAttribute"));
     if (fn) {
-        BOOL dark = TRUE;
+        BOOL dark = !g_light;
         if (FAILED(fn(w, 20, &dark, sizeof(dark)))) fn(w, 19, &dark, sizeof(dark));
     }
     FreeLibrary(lib);
@@ -238,10 +249,10 @@ void DrawHistoryButton(const DRAWITEMSTRUCT* item) {
                         (item->CtlID == k7Days && g_days == 7) ||
                         (item->CtlID == k30Days && g_days == 30);
     const bool clear = item->CtlID == kClear;
-    const COLORREF background = disabled ? kBg : down ? RGB(38, 59, 83) :
-                                active ? RGB(31, 67, 112) : kPanel;
-    const COLORREF outline = disabled ? kGrid : (active || focused) ? kBlue : kBorder;
-    const COLORREF textColor = disabled ? RGB(102, 117, 136) : clear ? kRed : active ? kText : kMuted;
+    const COLORREF background = disabled ? P().bg : down ? P().btnDown :
+                                active ? P().btnActive : P().panel;
+    const COLORREF outline = disabled ? P().grid : (active || focused) ? P().blue : P().border;
+    const COLORREF textColor = disabled ? P().btnDisabledText : clear ? P().red : active ? P().text : P().muted;
     RoundedPanel(item->hDC, item->rcItem, background, outline, 12);
     wchar_t text[160]{};
     GetWindowTextW(item->hwndItem, text, 160);
@@ -251,15 +262,14 @@ void DrawHistoryButton(const DRAWITEMSTRUCT* item) {
     InflateRect(&label, -Ui(item->hwndItem, 8), 0);
     Label(item->hDC, text, label, textColor, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     SelectObject(item->hDC, oldFont);
-    // The blue border above is the keyboard-focus indicator. Avoid DrawFocusRect's
-    // stark white dotted box against a dark theme.
+    // The blue border above is the keyboard-focus indicator, so DrawFocusRect is not needed.
 }
 
 void DrawStat(HWND w, HDC dc, const RECT& r, const wchar_t* title,
               const std::wstring& value, COLORREF valueColor) {
-    RoundedPanel(dc, r, kPanel, kBorder, Ui(w, 12));
+    RoundedPanel(dc, r, P().panel, P().border, Ui(w, 12));
     const int pad = Ui(w, 14);
-    Label(dc, T(title), RECT{r.left + pad, r.top + Ui(w, 7), r.right - pad, r.top + Ui(w, 34)}, kMuted);
+    Label(dc, T(title), RECT{r.left + pad, r.top + Ui(w, 7), r.right - pad, r.top + Ui(w, 34)}, P().muted);
     HFONT old = static_cast<HFONT>(SelectObject(dc, g_uiValue ? g_uiValue : GetStockObject(DEFAULT_GUI_FONT)));
     Label(dc, value, RECT{r.left + pad, r.top + Ui(w, 35), r.right - pad, r.bottom - Ui(w, 7)}, valueColor);
     SelectObject(dc, old);
@@ -288,7 +298,7 @@ void Paint(HWND w) {
     HBITMAP bitmap = buffer ? CreateCompatibleBitmap(screen, width, height) : nullptr;
     HBITMAP oldBitmap = (bitmap && buffer) ? static_cast<HBITMAP>(SelectObject(buffer, bitmap)) : nullptr;
     HDC dc = oldBitmap ? buffer : screen;
-    HBRUSH bg = CreateSolidBrush(kBg);
+    HBRUSH bg = CreateSolidBrush(P().bg);
     FillRect(dc, &bounds, bg);
     DeleteObject(bg);
     HFONT oldFont = static_cast<HFONT>(SelectObject(dc, g_uiFont ? g_uiFont : GetStockObject(DEFAULT_GUI_FONT)));
@@ -304,22 +314,22 @@ void Paint(HWND w) {
     // Headline and a separate subtitle row: they never overlap statistic cards.
     HFONT saved = static_cast<HFONT>(SelectObject(dc, g_uiTitle ? g_uiTitle : GetStockObject(DEFAULT_GUI_FONT)));
     Label(dc, std::wstring(T(L"Battery history")) + L"  •  " + g_name,
-          RECT{margin, Ui(w, 73), width - margin, Ui(w, 113)}, kText);
+          RECT{margin, Ui(w, 73), width - margin, Ui(w, 113)}, P().text);
     SelectObject(dc, saved);
     if (g_demo) {
         Label(dc, T(L"Demo readings (not saved)"),
-              RECT{margin, Ui(w, 111), width - margin, Ui(w, 139)}, kMuted);
+              RECT{margin, Ui(w, 111), width - margin, Ui(w, 139)}, P().muted);
     }
 
     const int gap = Ui(w, 10);
     const int cardsAvailable = width - 2 * margin - 4 * gap;
     const int cardWidth = cardsAvailable / 5;
     std::wstring delta = L"—";
-    COLORREF deltaColor = kText;
+    COLORREF deltaColor = P().text;
     if (stats.count >= 2) {
         const int change = stats.last - stats.first;
         delta = (change > 0 ? L"+" : L"") + std::to_wstring(change) + L" " + T(L"pp");
-        deltaColor = change < 0 ? kRed : change > 0 ? kGreen : kText;
+        deltaColor = change < 0 ? P().red : change > 0 ? P().green : P().text;
     }
     const std::wstring values[] = {
         stats.count ? std::to_wstring(stats.last) + L"%" : L"—",
@@ -332,15 +342,15 @@ void Paint(HWND w) {
     for (int i = 0; i < 5; ++i) {
         const int x = margin + i * (cardWidth + gap);
         RECT card{x, Ui(w, 148), x + cardWidth, Ui(w, 224)};
-        DrawStat(w, dc, card, headings[i], values[i], i == 3 ? deltaColor : i == 0 ? kBlue : kText);
+        DrawStat(w, dc, card, headings[i], values[i], i == 3 ? deltaColor : i == 0 ? P().blue : P().text);
     }
 
     RECT eta{margin, Ui(w, 237), width - margin, Ui(w, 318)};
-    RoundedPanel(dc, eta, kPanel, kBorder, Ui(w, 12));
+    RoundedPanel(dc, eta, P().panel, P().border, Ui(w, 12));
     Label(dc, T(L"Estimated time to empty"),
-          RECT{eta.left + Ui(w, 16), eta.top + Ui(w, 7), eta.right - Ui(w, 20), eta.top + Ui(w, 34)}, kMuted);
+          RECT{eta.left + Ui(w, 16), eta.top + Ui(w, 7), eta.right - Ui(w, 20), eta.top + Ui(w, 34)}, P().muted);
     std::wstring etaValue, etaDetails;
-    COLORREF etaColor = kBlue;
+    COLORREF etaColor = P().blue;
     switch (forecast.state) {
         case RuntimeState::Ready:
             etaValue = FormatRemaining(forecast.hoursRemaining);
@@ -352,7 +362,7 @@ void Paint(HWND w) {
         case RuntimeState::Charging:
             etaValue = T(L"Currently charging");
             etaDetails = T(L"No remaining-time estimate while charging.");
-            etaColor = kGreen;
+            etaColor = P().green;
             break;
         case RuntimeState::Stale:
             etaValue = T(L"No recent readings");
@@ -374,19 +384,19 @@ void Paint(HWND w) {
     SelectObject(dc, saved);
     // Rate and method notes in the right half, avoiding truncation on smaller windows.
     Label(dc, etaDetails, RECT{eta.left + (eta.right - eta.left) / 2, eta.top + Ui(w, 43),
-                               eta.right - Ui(w, 16), eta.bottom - Ui(w, 5)}, kMuted);
+                               eta.right - Ui(w, 16), eta.bottom - Ui(w, 5)}, P().muted);
 
     RECT panel{margin, Ui(w, 332), width - margin, height - Ui(w, 22)};
     if (panel.bottom > panel.top + Ui(w, 140)) {
-        RoundedPanel(dc, panel, kPanel, kBorder, Ui(w, 14));
+        RoundedPanel(dc, panel, P().panel, P().border, Ui(w, 14));
         Label(dc, T(L"Blue: recorded battery; green: measured increase"),
-              RECT{panel.left + Ui(w, 18), panel.top + Ui(w, 8), panel.right - Ui(w, 12), panel.top + Ui(w, 42)}, kMuted);
+              RECT{panel.left + Ui(w, 18), panel.top + Ui(w, 8), panel.right - Ui(w, 12), panel.top + Ui(w, 42)}, P().muted);
         RECT plot{panel.left + Ui(w, 78), panel.top + Ui(w, 53),
                   panel.right - Ui(w, 21), panel.bottom - Ui(w, 61)};
         if (plot.right - plot.left > Ui(w, 120) && plot.bottom - plot.top > Ui(w, 68)) {
-            RoundedPanel(dc, plot, kChart, kChart, Ui(w, 6));
+            RoundedPanel(dc, plot, P().chart, P().chart, Ui(w, 6));
             const int graphW = plot.right - plot.left, graphH = plot.bottom - plot.top;
-            HPEN grid = CreatePen(PS_SOLID, 1, kGrid);
+            HPEN grid = CreatePen(PS_SOLID, 1, P().grid);
             HPEN oldPen = static_cast<HPEN>(SelectObject(dc, grid));
             for (int i = 0; i <= 4; ++i) {
                 const int y = plot.top + graphH * i / 4;
@@ -395,7 +405,7 @@ void Paint(HWND w) {
                 // The label gutter is wide enough for 100%, including DPI scaling.
                 Label(dc, std::to_wstring(100 - i * 25) + L"%",
                       RECT{panel.left + Ui(w, 9), y - Ui(w, 13), plot.left - Ui(w, 10), y + Ui(w, 13)},
-                      kMuted, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+                      P().muted, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
                 const int x = plot.left + graphW * i / 4;
                 MoveToEx(dc, x, plot.top, nullptr);
                 LineTo(dc, x, plot.bottom);
@@ -404,8 +414,8 @@ void Paint(HWND w) {
             DeleteObject(grid);
 
             if (!points.empty()) {
-                HPEN dataPen = CreatePen(PS_SOLID, Ui(w, 2), kBlue);
-                HPEN increasePen = CreatePen(PS_SOLID, Ui(w, 2), kGreen);
+                HPEN dataPen = CreatePen(PS_SOLID, Ui(w, 2), P().blue);
+                HPEN increasePen = CreatePen(PS_SOLID, Ui(w, 2), P().green);
                 const int64_t since = now - static_cast<int64_t>(g_days) * kSecondsPerDay;
                 const int64_t span = static_cast<int64_t>(g_days) * kSecondsPerDay;
                 int previousX = 0, previousY = 0, previousLevel = -1;
@@ -428,7 +438,7 @@ void Paint(HWND w) {
                     }
                     // Sparse markers at 30 days avoid a heavy dotted line.
                     if (i + 1 == points.size() || points.size() <= 70 || i % 10 == 0) {
-                        HBRUSH dot = CreateSolidBrush(rising ? kGreen : kBlue);
+                        HBRUSH dot = CreateSolidBrush(rising ? P().green : P().blue);
                         HGDIOBJ oldP = SelectObject(dc, GetStockObject(NULL_PEN));
                         HGDIOBJ oldB = SelectObject(dc, dot);
                         const int radius = Ui(w, i + 1 == points.size() ? 4 : 2);
@@ -445,16 +455,16 @@ void Paint(HWND w) {
             } else {
                 Label(dc, T(L"No readings in this period"),
                       RECT{plot.left + Ui(w, 10), plot.top, plot.right - Ui(w, 10), plot.bottom},
-                      kMuted, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+                      P().muted, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
             }
             const std::wstring start = g_days == 1 ? std::wstring(T(L"24h ago")) :
                 TF(L"{days} days ago", {{L"days", std::to_wstring(g_days)}});
-            Label(dc, start, RECT{plot.left, plot.bottom + Ui(w, 5), plot.left + Ui(w, 160), plot.bottom + Ui(w, 31)}, kMuted);
+            Label(dc, start, RECT{plot.left, plot.bottom + Ui(w, 5), plot.left + Ui(w, 160), plot.bottom + Ui(w, 31)}, P().muted);
             Label(dc, T(L"Now"), RECT{plot.right - Ui(w, 65), plot.bottom + Ui(w, 5),
-                                      plot.right, plot.bottom + Ui(w, 31)}, kMuted, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+                                      plot.right, plot.bottom + Ui(w, 31)}, P().muted, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
             Label(dc, T(L"Trend estimates are approximate; missing samples are not inferred."),
                   RECT{plot.left, plot.bottom + Ui(w, 31), plot.right, plot.bottom + Ui(w, 57)},
-                  kMuted, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+                  P().muted, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
         }
     }
     SelectObject(dc, oldFont);
@@ -469,7 +479,15 @@ void Paint(HWND w) {
 
 LRESULT CALLBACK ViewProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+        case WM_SETTINGCHANGE:
+            if (lp && !lstrcmpW(reinterpret_cast<LPCWSTR>(lp), L"ImmersiveColorSet")) {
+                ApplyTheme(w);
+                InvalidateRect(w, nullptr, TRUE);
+                for (HWND b : {g_btn24, g_btn7, g_btn30, g_btnClear}) if (b) InvalidateRect(b, nullptr, TRUE);
+            }
+            break;
         case WM_CREATE: {
+            ApplyTheme(w);
             g_uiFont = CreateUiFont(w, 10, FW_NORMAL);
             g_uiBold = CreateUiFont(w, 13, FW_SEMIBOLD);
             g_uiTitle = CreateUiFont(w, 17, FW_SEMIBOLD);
@@ -579,7 +597,7 @@ void Show(HWND owner, const std::wstring& key, const std::wstring& displayName) 
     wc.hInstance = inst;
     wc.lpfnWndProc = ViewProc;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    wc.hbrBackground = nullptr;  // WM_PAINT fills the whole window
     wc.lpszClassName = kWindowClass;
     if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
     g_days = 7;
@@ -589,7 +607,6 @@ void Show(HWND owner, const std::wstring& key, const std::wstring& displayName) 
                              CW_USEDEFAULT, CW_USEDEFAULT, bounds.right-bounds.left, bounds.bottom-bounds.top,
                              nullptr, nullptr, inst, nullptr);
     if (!g_view) return;
-    DarkTitleBar(g_view);
     ShowWindow(g_view, SW_SHOWNORMAL);
     UpdateWindow(g_view);
     SetForegroundWindow(g_view);
