@@ -53,6 +53,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollDareu(ctx);
     PollZenith(ctx);
     PollDarmoshark(ctx);
+    PollDarmosharkNrf(ctx);
     PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
     PollAtkKeyboard(ctx);
     PollRedragonEvision(ctx);
