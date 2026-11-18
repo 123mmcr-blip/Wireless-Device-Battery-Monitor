@@ -75,6 +75,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollNinjutso(ctx);
     PollSprime(ctx);
     PollRawm(ctx);
+    PollAkko(ctx);
     PollRongyuan(ctx);
     PollSonix(ctx);
     PollViaDongle(ctx);
@@ -130,6 +131,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollAirPods(ctx);  // before the Bluetooth fallback, which has no level for AirPods
     PollPhoneLink(ctx);
     PollGalaxyBuds(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
+    PollNothingEar(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
     PollMoondrop(ctx);
     PollDarkrim(ctx);
     PollAlienware(ctx);
