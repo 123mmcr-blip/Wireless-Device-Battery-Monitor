@@ -107,6 +107,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollGameSir(ctx);
     PollFlydigi(ctx);
     PollGameSirCyclone(ctx);
+    PollGameSirBle(ctx);  // Cyclone Pro: battery over BLE; claims its dongle before the XInput fallback
     Poll8BitDo(ctx);
     PollBeitong(ctx);  // before the XInput fallback, which only sees the receiver as wired
     PollAirPods(ctx);  // before the Bluetooth fallback, which has no level for AirPods
