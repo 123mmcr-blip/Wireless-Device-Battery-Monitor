@@ -69,7 +69,7 @@ void PollGlorious(PollContext& ctx);  // also Hitscan
 void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 / HERO 68 Air keyboards, SC580 mouse (before Kysona)
 void PollEweadn(PollContext& ctx);    // EWEADN S7 / S9 mice (372E:103D receiver, 372E:1027 S9 Ultra cable)
 void PollAulaMouse(PollContext& ctx); // AULA X9 Ultra on the shared AULA-8K receiver
-void PollDareu(PollContext& ctx);     // DAREU EM901X receiver / cable, Sharkoon SGM50W (split feature/input collections)
+void PollDareu(PollContext& ctx);     // DAREU EM901X receiver / cable, A84 keyboard, A980 Pro, Sharkoon SGM50W (split feature/input collections)
 void PollZenith(PollContext& ctx);    // Zenith Pro mouse (260D:1114 receiver, 1143 cable)
 void PollDarmoshark(PollContext& ctx); // Darmoshark M3 over its 2.4 GHz receiver
 void PollDarmosharkNrf(PollContext& ctx); // Darmoshark M3S Pro on the Nordic 1K receiver (1915:0723)
