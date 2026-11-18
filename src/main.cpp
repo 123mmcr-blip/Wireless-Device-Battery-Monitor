@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "devices.h"
+#include "labels.h"
 #include "report.h"
 #include "widget.h"
 
@@ -433,7 +434,8 @@ std::vector<TrayEntry*> OrderedEntries(bool shownOnly) {
         int ra = rank(a), rb = rank(b);
         if (ra != rb) return ra < rb;
         int ka = KindOrder(a->st.kind), kb = KindOrder(b->st.kind);
-        return ka != kb ? ka < kb : a->st.name < b->st.name;
+        if (ka != kb) return ka < kb;
+        return a->st.name != b->st.name ? a->st.name < b->st.name : a->st.key < b->st.key;  // same name: keep a fixed order
     });
     return list;
 }
@@ -441,6 +443,10 @@ std::vector<TrayEntry*> OrderedEntries(bool shownOnly) {
 void UpdateWidget() {
     if (!g_useWidget) return;
     std::vector<TrayEntry*> list = OrderedEntries(true);
+    // Two devices of one kind share an icon: give each a tiny caption so they can be told apart.
+    std::vector<LabelInput> labelIn;
+    for (auto* e : list) labelIn.push_back({ e->st.kind, e->st.name });
+    std::vector<std::wstring> labels = ShortLabels(labelIn, 3);
     std::vector<WidgetItem> items;
     std::wstring tip;
     for (auto* e : list) {
@@ -452,6 +458,7 @@ void UpdateWidget() {
         it.dim = e->st.percent < 0;
         it.low = !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
+        it.label = labels[items.size()];
         items.push_back(it);
         if (!tip.empty()) tip += L"\n";
         tip += e->st.name + L": " + StatusText(*e);
