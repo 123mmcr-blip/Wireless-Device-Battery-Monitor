@@ -9,7 +9,68 @@
 // FF01:0000 input-17 pair, so the same query is sent. Not tested on hardware.
 #include "drivers.h"
 
+
+// DAREU Togran protocol on receiver 260D:1131 and A980 Pro cable 260D:1148 (verified on hardware), read from DAREU's own driver
+// feature report 0A (65 bytes) on the consumer-control collection: [0A][slot<<4][len][class][cmd], reply echoes class/cmd
+// slot 0 class 00/A0 lists paired mice, slot n class 07/80 gives [7]=status [8]=level [9]=max, status 1 = charging
+static bool TogranQuery(HidDev& dev, BYTE slot, BYTE len, BYTE cls, BYTE cmd, std::vector<BYTE>& r) {
+    std::vector<BYTE> req(65, 0);
+    req[0] = 0x0A;
+    req[1] = (BYTE)(slot << 4);
+    req[2] = len;
+    req[3] = cls;
+    req[4] = cmd;
+    if (!dev.SetFeature(req)) return false;
+    for (int tries = 0; tries < 15; tries++) {
+        Sleep(30);
+        if (!dev.GetFeature(0x0A, r) || r.size() < 11) return false;
+        if ((r[1] & 0x0F) == 2 && r[3] == cls && r[4] == cmd) return true;
+    }
+    return false;
+}
+
+static void AddTogranBattery(PollContext& ctx, HidDev& dev, BYTE slot, USHORT pid, USHORT mousePid) {
+    std::vector<BYTE> b;
+    if (!TogranQuery(dev, slot, 4, 0x07, 0x80, b)) return;
+    BYTE maxLevel = b[9] ? b[9] : 100;
+    if (b[8] > maxLevel) return;
+    DeviceStatus s;
+    s.key = L"dareu:260D:" + Hex4(pid) + (pid == mousePid ? L"" : L":" + Hex4(mousePid));
+    s.name = mousePid == 0x1148 ? L"DAREU A980 Pro" : L"DAREU " + Hex4(mousePid);
+    s.kind = DeviceKind::Mouse;
+    s.via = slot ? L"2.4 GHz receiver" : L"USB cable";
+    s.percent = (int)b[8] * 100 / maxLevel;
+    s.charging = b[7] == 1;
+    ctx.Add(s, 0x260D, pid);
+}
+
+// receiver 1131 lists mice by slot, the A980 Pro on its cable (1148) answers the battery query on slot 0.
+// while wired the receiver keeps the mouse listed with status 0, so it isn't shown twice
+static void PollDareuTogran(PollContext& ctx) {
+    for (USHORT pid : { USHORT(0x1131), USHORT(0x1148) }) {
+        if (ctx.IsClaimed(0x260D, pid)) continue;
+        auto colls = ctx.Find(0x260D, pid, [](const HidColl& c) {
+            return c.page() == 0x000C && c.usage() == 1 && c.featLen() == 65;
+        });
+        if (colls.size() != 1) continue;
+        HidDev dev;
+        if (!dev.OpenFeatureOnly(*colls[0])) continue;
+        if (pid != 0x1131) {
+            AddTogranBattery(ctx, dev, 0, pid, pid);
+            continue;
+        }
+        std::vector<BYTE> r;
+        if (!TogranQuery(dev, 0, 6, 0x00, 0xA0, r)) continue;
+        int count = r[7];
+        for (int slot = 1; slot <= count && slot <= 5; slot++) {
+            const BYTE* e = &r[8 + (slot - 1) * 3];
+            if (e[0]) AddTogranBattery(ctx, dev, (BYTE)slot, pid, (USHORT)((e[1] << 8) | e[2]));
+        }
+    }
+}
+
 void PollDareu(PollContext& ctx) {
+    PollDareuTogran(ctx);
     const USHORT vid = 0x260D;
     // Prefer a valid cable reading over potentially cached receiver telemetry.
     bool em901xRead = false;
