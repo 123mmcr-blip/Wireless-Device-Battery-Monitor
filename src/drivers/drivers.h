@@ -66,7 +66,7 @@ bool GWolvesIsCable(USHORT pid);
 // Vendor drivers (run in this order).
 void PollDarkrim(PollContext& ctx);   // DARKRIM SHADOW receiver (3654:6901)
 void PollGlorious(PollContext& ctx);  // also Hitscan
-void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 / HERO 68 Air keyboards (before Kysona)
+void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 / HERO 68 Air keyboards, SC580 mouse (before Kysona)
 void PollEweadn(PollContext& ctx);    // EWEADN S7 / S9 mice (372E:103D receiver, 372E:1027 S9 Ultra cable)
 void PollAulaMouse(PollContext& ctx); // AULA X9 Ultra on the shared AULA-8K receiver
 void PollDareu(PollContext& ctx);     // DAREU EM901X receiver / cable, Sharkoon SGM50W (split feature/input collections)
