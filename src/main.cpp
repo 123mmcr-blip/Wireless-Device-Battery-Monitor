@@ -13,10 +13,12 @@
 #include <string>
 #include <vector>
 
+#include "device_aliases.h"
 #include "devices.h"
 #include "i18n.h"
 #include "labels.h"
 #include "report.h"
+#include "rename_dialog.h"
 #include "widget.h"
 
 namespace {
@@ -37,7 +39,7 @@ enum MenuId : UINT {
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
 };
-enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_STRIDE = 4 };
+enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_RENAME, DEV_RESET_NAME, DEV_STRIDE = 8 };
 
 const wchar_t* kAppName = L"Wireless Battery";
 const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -72,6 +74,31 @@ struct TrayEntry {
 std::map<std::wstring, TrayEntry> g_entries;
 bool g_placeholder = false;
 HICON g_placeholderIcon = nullptr;
+
+// User-supplied names are presentation-only, keyed by stable DeviceStatus.key.
+// Driver identity, HID polling, brand detection and device diagnostics are unchanged.
+aliases::AliasMap g_aliases;
+
+std::wstring DisplayName(const TrayEntry& e) {
+    return aliases::DisplayName(g_aliases, e.st.key, e.st.name);
+}
+
+void LoadAliases() {
+    DWORD size = 0;
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"DeviceAliases", RRF_RT_REG_MULTI_SZ,
+                     nullptr, nullptr, &size) != ERROR_SUCCESS) return;
+    if (size < 2 * sizeof(wchar_t) || size > 128 * 1024 || size % sizeof(wchar_t)) return;
+    std::vector<wchar_t> data(size / sizeof(wchar_t), 0);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"DeviceAliases", RRF_RT_REG_MULTI_SZ,
+                     nullptr, data.data(), &size) == ERROR_SUCCESS)
+        g_aliases = aliases::Decode(data.data(), size / sizeof(wchar_t));
+}
+
+void SaveAliases() {
+    auto data = aliases::Encode(g_aliases);
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"DeviceAliases", REG_MULTI_SZ,
+                    data.data(), (DWORD)(data.size() * sizeof(wchar_t)));
+}
 
 // ---- helpers ----------------------------------------------------------------------------------
 
@@ -416,7 +443,7 @@ void ApplyEntry(TrayEntry& e) {
                              : RenderIcon(L"\u00D7", -1, Foreground(), Foreground(), true);
         e.iconSig = sig;
     }
-    std::wstring tip = s.name + L"\n" + StatusText(e);
+    std::wstring tip = DisplayName(e) + L"\n" + StatusText(e);
 
     const wchar_t* infoTitle = nullptr;
     std::wstring info;
@@ -424,7 +451,7 @@ void ApplyEntry(TrayEntry& e) {
     if (s.connected && !charging && s.percent >= 0 && s.percent <= LOW_BATTERY && !e.lowWarned) {
         e.lowWarned = true;
         infoTitle = T(L"Low battery");
-        info = TF(L"{name} is at {percent}%", { { L"name", s.name }, { L"percent", std::to_wstring(s.percent) } });
+        info = TF(L"{name} is at {percent}%", { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(s.percent) } });
     }
     TrayCall(e.added ? NIM_MODIFY : NIM_ADD, e.uid, e.icon, tip, infoTitle, info);
     e.added = true;
@@ -459,7 +486,7 @@ std::vector<TrayEntry*> OrderedEntries(bool shownOnly) {
         if (ra != rb) return ra < rb;
         int ka = KindOrder(a->st.kind), kb = KindOrder(b->st.kind);
         if (ka != kb) return ka < kb;
-        return a->st.name != b->st.name ? a->st.name < b->st.name : a->st.key < b->st.key;  // same name: keep a fixed order
+        return DisplayName(*a) != DisplayName(*b) ? DisplayName(*a) < DisplayName(*b) : a->st.key < b->st.key;  // same name: keep a fixed order
     });
     return list;
 }
@@ -469,7 +496,7 @@ void UpdateWidget() {
     std::vector<TrayEntry*> list = OrderedEntries(true);
     // Two devices of one kind share an icon: give each a tiny caption so they can be told apart.
     std::vector<LabelInput> labelIn;
-    for (auto* e : list) labelIn.push_back({ e->st.kind, e->st.name });
+    for (auto* e : list) labelIn.push_back({ e->st.kind, DisplayName(*e) });
     std::vector<std::wstring> labels = ShortLabels(labelIn, 3);
     std::vector<WidgetItem> items;
     std::wstring tip;
@@ -488,7 +515,7 @@ void UpdateWidget() {
         it.accent = AccentFor(e->st);
         items.push_back(it);
         if (!tip.empty()) tip += L"\n";
-        tip += e->st.name + L": " + StatusText(*e);
+        tip += DisplayName(*e) + L": " + StatusText(*e);
     }
     if (tip.empty()) tip = std::wstring(L"Wireless Battery: ") + T(L"No devices with battery info found");
     widget::SetItems(items, tip);
@@ -619,6 +646,31 @@ void ToggleHidden(const std::wstring& key) {
     UpdateWidget();
 }
 
+void RenameDevice(const std::wstring& key) {
+    auto it = g_entries.find(key);
+    if (it == g_entries.end()) return;
+    const std::wstring originalName = it->second.st.name;
+    std::wstring chosen;
+    if (!PromptDeviceName(g_hwnd, DisplayName(it->second), chosen)) return;
+    if (chosen == originalName) g_aliases.erase(key);
+    else if (g_aliases.count(key) || g_aliases.size() < aliases::kMaxAliases) g_aliases[key] = chosen;
+    else return;  // bounded registry value; don't silently drop other users' names
+    SaveAliases();
+    // The modal editor pumps the message queue, so polling may remove the entry.
+    // Resolve the iterator again rather than dereferencing a potentially stale one.
+    it = g_entries.find(key);
+    if (it != g_entries.end()) ApplyEntry(it->second);
+    UpdateWidget();
+}
+
+void ResetDeviceName(const std::wstring& key) {
+    if (!g_aliases.erase(key)) return;
+    SaveAliases();
+    auto it = g_entries.find(key);
+    if (it != g_entries.end()) ApplyEntry(it->second);
+    UpdateWidget();
+}
+
 // Swaps a shown device with its neighbour (dir -1 = left, +1 = right) and remembers the new order.
 void MoveEntry(const std::wstring& key, int dir) {
     std::vector<TrayEntry*> list = OrderedEntries(true);
@@ -655,7 +707,11 @@ void ShowMenu() {
         AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(sub, MF_STRING | (canLeft ? 0 : MF_GRAYED), base + DEV_LEFT, g_wantWidget ? T(L"Move left") : T(L"Move up"));
         AppendMenuW(sub, MF_STRING | (canRight ? 0 : MF_GRAYED), base + DEV_RIGHT, g_wantWidget ? T(L"Move right") : T(L"Move down"));
-        std::wstring line = e->st.name + L":  " + StatusText(*e) + L"   [" + T(e->st.via) + L"]";
+        AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(sub, MF_STRING, base + DEV_RENAME, T(L"Rename device..."));
+        AppendMenuW(sub, MF_STRING | (g_aliases.count(k) ? 0 : MF_GRAYED),
+                    base + DEV_RESET_NAME, T(L"Reset to original name"));
+        std::wstring line = DisplayName(*e) + L":  " + StatusText(*e) + L"   [" + T(e->st.via) + L"]";
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         keys.push_back(k);
     }
@@ -750,6 +806,8 @@ void ShowMenu() {
                     case DEV_TOGGLE: ToggleHidden(key); break;
                     case DEV_LEFT:   MoveEntry(key, -1); break;
                     case DEV_RIGHT:  MoveEntry(key, +1); break;
+                    case DEV_RENAME: RenameDevice(key); break;
+                    case DEV_RESET_NAME: ResetDeviceName(key); break;
                 }
             }
     }
@@ -995,6 +1053,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     widget::SetMonitorChoice(g_widgetMonitor);
     LoadHidden();
     LoadOrder();
+    LoadAliases();
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);
