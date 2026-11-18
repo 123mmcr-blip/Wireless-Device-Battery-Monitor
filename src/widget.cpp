@@ -14,6 +14,7 @@ UINT g_clickMsg;
 bool g_light, g_hover;
 bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
 bool g_stacked;     // icon above the percentage (menu option, PR #525)
+bool g_leftSide;    // show on the left side of the taskbar (menu option)
 bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
@@ -90,6 +91,25 @@ IUIAutomationCondition* StringCondition(IUIAutomation* uia, PROPERTYID prop, con
     return c;
 }
 
+// First descendant with the given AutomationId (null on failure). Caller owns the returned element.
+// Must run on the lookup thread, never the UI thread (same cross-process deadlock as above).
+IUIAutomationElement* FindByAutomationId(IUIAutomation* uia, HWND bar, const wchar_t* id) {
+    IUIAutomationElement* root = nullptr;
+    IUIAutomationElement* el = nullptr;
+    IUIAutomationCondition* cond = nullptr;
+    VARIANT v;
+    VariantInit(&v);
+    v.vt = VT_BSTR;
+    v.bstrVal = SysAllocString(id);
+    if (SUCCEEDED(uia->ElementFromHandle(bar, &root)) && root &&
+        SUCCEEDED(uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, v, &cond)) && cond)
+        root->FindFirst(TreeScope_Descendants, cond, &el);
+    VariantClear(&v);
+    if (cond) cond->Release();
+    if (root) root->Release();
+    return el;
+}
+
 Span MeasureSpan(IUIAutomation* uia, HWND bar) {
     Span s;
     s.bar = bar;
@@ -156,20 +176,7 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
         if (bar && IsWindow(bar)) {
             if (!uia)
                 CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&uia);
-            if (uia && !btn) {
-                IUIAutomationElement* root = nullptr;
-                IUIAutomationCondition* cond = nullptr;
-                VARIANT id;
-                VariantInit(&id);
-                id.vt = VT_BSTR;
-                id.bstrVal = SysAllocString(L"WidgetsButton");
-                if (SUCCEEDED(uia->ElementFromHandle(bar, &root)) && root &&
-                    SUCCEEDED(uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, id, &cond)) && cond)
-                    root->FindFirst(TreeScope_Descendants, cond, &btn);
-                VariantClear(&id);
-                if (cond) cond->Release();
-                if (root) root->Release();
-            }
+            if (uia && !btn) btn = FindByAutomationId(uia, bar, L"WidgetsButton");
             if (btn && FAILED(btn->get_CurrentBoundingRectangle(&r))) {
                 btn->Release();  // stale (Widgets turned off, Explorer restarted): look it up again next time
                 btn = nullptr;
@@ -904,6 +911,11 @@ void SetStacked(bool on) {
     if (g_wnd) Reposition();
 }
 
+void SetLeftSide(bool on) {
+    g_leftSide = on;
+    if (g_wnd) Reposition();
+}
+
 void SetMonitorChoice(const std::wstring& choice) {
     g_choice = choice.empty() ? L"all" : choice;
     SyncMirrors();  // adds, removes or hides strips right away
@@ -992,6 +1004,13 @@ bool Reposition() {
     ScreenToClient(g_taskbar, &p);
     int left = p.x - g_size.cx - Px(2);
 
+    // Optional left-side placement: sit at the far left of the taskbar with a small gap.
+    if (g_leftSide) {
+        RECT client{};
+        GetClientRect(g_taskbar, &client);
+        int leftGap = Px(10);
+        left = rtl ? (client.right - g_size.cx - leftGap) : leftGap;
+    }
 
     // Optional user override in DPI-independent pixels (e.g. for custom padding).
     DWORD customOffset = 0, sz = sizeof(customOffset);
