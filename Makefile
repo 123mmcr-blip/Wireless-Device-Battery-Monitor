@@ -63,5 +63,7 @@ test:
 	./build/xenta_protocol_test.exe
 	$(CXX) -std=c++17 -O2 -Wall tests/labels_test.cpp src/labels.cpp -o build/labels_test.exe
 	./build/labels_test.exe
+	$(CXX) $(CXXFLAGS) tests/brands_test.cpp src/brands.cpp -o build/brands_test.exe
+	./build/brands_test.exe
 
 .PHONY: clean test

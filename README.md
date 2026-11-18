@@ -33,6 +33,11 @@ Battery levels of your wireless mouse, headset, keyboard and controller, right o
 - **Theme:** it follows light/dark mode and DPI scaling.
 - **Transparent taskbar themes** (e.g. Windhawk's Taskbar Styler): turn on *Background behind taskbar text* in the menu to keep the text readable over the wallpaper.
 - **Several monitors:** the widget shows on every monitor's taskbar, next to its clock, so it stays visible while a game runs fullscreen. *Show the widget on* in the menu picks *All monitors*, *Main monitor only*, or one display (e.g. only *Display 3*).
+- **Brand colors:** devices of 15 known brands get their maker's color, with a soft glow and a thin level bar under the
+  percentage: Razer green, Logitech blue, SteelSeries orange, Corsair yellow, HyperX / ROG / ZOWIE red, PlayStation,
+  Xbox, Samsung, Apple, Jabra, JBL, Cooler Master and Steam. Each color has a dark- and a light-taskbar shade. The brand
+  comes from the driver that found the device, then the vendor ID, then the name; colors and rules are in
+  `src/brands.cpp`. Turn it off with *Brand colors* in the menu.
 
 **Tray icons:** one icon per device with the number drawn in it, plus a "Low battery" notification at 15%. The app switches to this automatically when the taskbar is vertical or can't be found.
 
@@ -180,6 +185,7 @@ WirelessBattery.exe --list     # print every device and its battery level, then 
 WirelessBattery.exe --dump     # every HID collection, HID devices that could not be opened, all USB devices (also ones
                                # without a HID interface) and Bluetooth devices; also saved to %TEMP%\WirelessBattery-dump.txt
 WirelessBattery.exe --report   # open the "Request support for a device" window
+WirelessBattery.exe --demo     # sample devices of every brand instead of real ones (screenshots, checking colors)
 WirelessBattery.exe --quit     # close the running instance
 ```
 

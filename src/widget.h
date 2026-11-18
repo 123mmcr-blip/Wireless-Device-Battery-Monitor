@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include "brands.h"
 #include "devices.h"
 
 struct WidgetItem {
@@ -16,6 +17,7 @@ struct WidgetItem {
     bool low      = false;
     bool bluetooth = false;  // picks the Bluetooth icon when the device type is unknown
     std::wstring label;      // tiny caption on the icon; set only when two devices of one kind are shown
+    Accent accent  = Accent::None;  // brand color for the icon, its glow and the level bar
 };
 
 namespace widget {
