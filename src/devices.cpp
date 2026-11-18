@@ -52,6 +52,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollDarmoshark(ctx);
     PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
     PollAtkKeyboard(ctx);
+    PollRedragonEvision(ctx);
     PollPulsar(ctx);     // before Kysona, which also scans the 3710 vendor id
     PollAtkBitmouse(ctx);  // before Kysona, which would probe the NK dongle with the wrong protocol
     PollKysona(ctx);
