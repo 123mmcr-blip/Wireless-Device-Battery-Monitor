@@ -665,11 +665,16 @@ void ShowMenu() {
 // ---- worker thread ----------------------------------------------------------------------------
 
 DWORD WINAPI Worker(LPVOID) {
+    // At sign-in a USB receiver may enumerate before its wireless link is ready.
+    constexpr DWORD startupPollDelays[] = { 3000, 7000, 15000 };
+    size_t startupPoll = 0;
+    HANDLE events[2] = { g_stopEvt, g_refreshEvt };
     for (;;) {
         auto* v = new std::vector<DeviceStatus>(PollAllDevices());
         if (!PostMessageW(g_hwnd, WM_RESULTS, 0, (LPARAM)v)) delete v;
-        HANDLE hs[2] = { g_stopEvt, g_refreshEvt };
-        if (WaitForMultipleObjects(2, hs, FALSE, POLL_INTERVAL_MS) == WAIT_OBJECT_0) return 0;
+        DWORD delay = POLL_INTERVAL_MS;
+        if (startupPoll < ARRAYSIZE(startupPollDelays)) delay = startupPollDelays[startupPoll++];
+        if (WaitForMultipleObjects(2, events, FALSE, delay) == WAIT_OBJECT_0) return 0;
     }
 }
 
