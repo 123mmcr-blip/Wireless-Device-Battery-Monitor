@@ -132,5 +132,6 @@ std::wstring DumpHidCollections() {
     }
     out += report::DumpExtras();  // unopenable HID collections, non-HID USB devices, Bluetooth devices
     out += DumpXentaFrames();
+    out += DumpAstroFrames();
     return out;
 }
