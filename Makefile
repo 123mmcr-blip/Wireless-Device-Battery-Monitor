@@ -101,7 +101,7 @@ test-update-signature: build/version.h
 
 test-update-win: build/version.h build/app_res.o
 	@mkdir -p build
-	$(CXX) -std=c++17 -O2 -Wall tests/update_win_test.cpp src/update_core.cpp src/update_signature.cpp build/app_res.o \
+	$(CXX) -std=c++17 -O2 -Wall tests/update_win_test.cpp src/update_core.cpp src/update_signature.cpp src/i18n.cpp build/app_res.o \
 	    -o build/update_win_test.exe -lwinhttp -lbcrypt -lcomctl32 -lversion -lole32
 	./build/update_win_test.exe
 

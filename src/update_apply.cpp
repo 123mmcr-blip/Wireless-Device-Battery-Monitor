@@ -1,5 +1,6 @@
 #include "update_apply.h"
 #include "update_win.h"
+#include "i18n.h"
 #include <shellapi.h>
 #include <objbase.h>
 #include <vector>
@@ -52,7 +53,7 @@ bool Launch(const std::wstring& executable, const std::wstring& arguments, bool 
     return launched;
 }
 
-void Error(const wchar_t* text) { MessageBoxW(nullptr, text, L"Wireless Battery update", MB_OK | MB_ICONINFORMATION); }
+void Error(const wchar_t* text) { MessageBoxW(nullptr, T(text), T(L"Wireless Battery update"), MB_OK | MB_ICONINFORMATION); }
 
 void LogResult(DWORD code) {
     wchar_t local[32768];
@@ -90,15 +91,15 @@ bool StartApply(HWND owner, const std::wstring& installer, const ReleaseInfo& re
     auto target = ExecutablePath();
     auto installed = FindInstallation(target);
     if (!installed.valid || !release.CanInstall() || !VerifyFile(installer, release.sha256, release.size)) {
-        MessageBoxW(owner, L"The update or installation could not be verified. Please use the official release page.",
-            L"Wireless Battery update", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(owner, T(L"The update or installation could not be verified. Please use the official release page."),
+            T(L"Wireless Battery update"), MB_OK | MB_ICONINFORMATION);
         return false;
     }
     size_t slash = installer.find_last_of(L'\\');
     if (slash == std::wstring::npos) return false;
     std::wstring helper = installer.substr(0, slash) + L"\\update-helper.exe";
     if (!CopyFileW(target.c_str(), helper.c_str(), TRUE)) {
-        MessageBoxW(owner, L"Could not prepare the update helper. Your current version was kept.", L"Wireless Battery update", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(owner, T(L"Could not prepare the update helper. Your current version was kept."), T(L"Wireless Battery update"), MB_OK | MB_ICONINFORMATION);
         return false;
     }
     std::wstring arguments = L"--apply-update " + QuoteArgument(installer) + L" " + QuoteArgument(Wide(release.sha256)) + L" " +
@@ -106,7 +107,7 @@ bool StartApply(HWND owner, const std::wstring& installer, const ReleaseInfo& re
         L" " + std::to_wstring(GetCurrentProcessId());
     if (!Launch(helper, arguments, false, process)) {
         DeleteFileW(helper.c_str());
-        MessageBoxW(owner, L"Could not start the update helper. Your current version was kept.", L"Wireless Battery update", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(owner, T(L"Could not start the update helper. Your current version was kept."), T(L"Wireless Battery update"), MB_OK | MB_ICONINFORMATION);
         return false;
     }
     return true;
@@ -115,6 +116,7 @@ bool StartApply(HWND owner, const std::wstring& installer, const ReleaseInfo& re
 int RunApplyMode(int argc, wchar_t** argv) {
     if (argc < 2 || wcscmp(argv[1], L"--apply-update") != 0) return -1;
     if (argc != 8) return 2;
+    i18n::Init();  // the helper runs before the normal startup, so its messages need the language too
     std::wstring installer = argv[2], target = argv[5], self = ExecutablePath();
     auto slash = self.find_last_of(L'\\');
     wchar_t temporary[32768];

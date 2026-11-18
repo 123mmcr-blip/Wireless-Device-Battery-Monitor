@@ -2,6 +2,7 @@
 #include "app_version.h"
 #include "update_apply.h"
 #include "update_signature.h"
+#include "i18n.h"
 #include <winhttp.h>
 #include <bcrypt.h>
 #include <shellapi.h>
@@ -49,7 +50,7 @@ HWND DialogOwner(HWND owner) {
 void ShowMessage(HWND owner, const wchar_t* text) {
     if (dialogOpen || shuttingDown) return;
     dialogOpen = true;
-    MessageBoxW(DialogOwner(owner), text, L"Wireless Battery update", MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(DialogOwner(owner), T(text), T(L"Wireless Battery update"), MB_OK | MB_ICONINFORMATION);
     dialogOpen = false;
 }
 
@@ -290,10 +291,10 @@ void ToggleAutomatic() {
 }
 
 std::wstring MenuLabel() {
-    if (operation == Operation::Installing) return L"Installing update...";
-    if (operation == Operation::Checking) return L"Checking for updates...";
-    if (!known.tag.empty()) return L"Update available: " + Widen(known.tag) + L"...";
-    return lastError.empty() ? L"Check for updates..." : L"Update check failed - try again...";
+    if (operation == Operation::Installing) return T(L"Installing update...");
+    if (operation == Operation::Checking) return T(L"Checking for updates...");
+    if (!known.tag.empty()) return TF(L"Update available: {version}...", { { L"version", Widen(known.tag) } });
+    return lastError.empty() ? T(L"Check for updates...") : T(L"Update check failed - try again...");
 }
 
 void Activate(HWND owner) {
@@ -465,7 +466,7 @@ HRESULT CALLBACK DownloadDialog(HWND dialog, UINT notification, WPARAM button, L
         // Cancel/Escape always vetoes installation, even if the worker has just finished.
         Cancel();
         if (!done) {
-            SendMessageW(dialog, TDM_SET_ELEMENT_TEXT, TDE_CONTENT, (LPARAM)L"Cancelling download...");
+            SendMessageW(dialog, TDM_SET_ELEMENT_TEXT, TDE_CONTENT, (LPARAM)T(L"Cancelling download..."));
             return S_FALSE;
         }
     }
@@ -494,9 +495,9 @@ void DownloadAndInstall(HWND owner) {
     config.hwndParent = DialogOwner(owner);
     config.dwFlags = TDF_SHOW_PROGRESS_BAR | TDF_CALLBACK_TIMER;
     config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-    config.pszWindowTitle = L"Wireless Battery update";
-    config.pszMainInstruction = L"Downloading and verifying the update";
-    config.pszContent = L"Wireless Battery will close briefly while the update is installed.";
+    config.pszWindowTitle = T(L"Wireless Battery update");
+    config.pszMainInstruction = T(L"Downloading and verifying the update");
+    config.pszContent = T(L"Wireless Battery will close briefly while the update is installed.");
     config.pfCallback = DownloadDialog;
     config.lpCallbackData = reinterpret_cast<LONG_PTR>(&state);
     HRESULT dialogResult = TaskDialogIndirect(&config, nullptr, nullptr, nullptr);
@@ -521,15 +522,17 @@ void DownloadAndInstall(HWND owner) {
 void ShowAvailable(HWND owner) {
     if (Busy() || shuttingDown) return;
     Installation installed = FindInstallation(ExecutablePath());
-    std::wstring content = L"Installed version: " + std::wstring(appversion::wide) + L"\nAvailable version: " + Widen(known.tag);
-    if (!installed.valid) content += L"\n\nThis is a portable or unregistered copy. Download the portable ZIP from the release page.";
+    std::wstring content = TF(L"Installed version: {version}", { { L"version", appversion::wide } }) + L"\n" +
+                           TF(L"Available version: {version}", { { L"version", Widen(known.tag) } });
+    if (!installed.valid)
+        content += std::wstring(L"\n\n") + T(L"This is a portable or unregistered copy. Download the portable ZIP from the release page.");
     TASKDIALOG_BUTTON buttons[3] = {
-        { 100, L"Download and install" }, { 101, L"Release notes" }, { IDCANCEL, L"Later" }
+        { 100, T(L"Download and install") }, { 101, T(L"Release notes") }, { IDCANCEL, T(L"Later") }
     };
     TASKDIALOGCONFIG config{ sizeof(config) };
     config.hwndParent = DialogOwner(owner);
-    config.pszWindowTitle = L"Wireless Battery update";
-    config.pszMainInstruction = L"A new version is available";
+    config.pszWindowTitle = T(L"Wireless Battery update");
+    config.pszMainInstruction = T(L"A new version is available");
     config.pszContent = content.c_str();
     config.pButtons = installed.valid ? buttons : buttons + 1;
     config.cButtons = installed.valid ? 3 : 2;
