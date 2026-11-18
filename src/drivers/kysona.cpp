@@ -28,6 +28,15 @@ bool IsVxeR1(USHORT vid, USHORT pid) {
            (pid == 0xF58A || pid == 0xF58C || pid == 0xF58E || pid == 0xF58F || pid == 0xF505 || pid == 0xF506);
 }
 
+// A VXE R1 cable reports under its receiver's id, so the mouse is one entry on either connection.
+// F58A / F58C verified; the other pairs follow the order PR #69 lists them in.
+USHORT KeyPid(USHORT vid, USHORT pid) {
+    if (vid == 0x3554 && pid == 0xF58C) return 0xF58A;
+    if (vid == 0x3554 && pid == 0xF58F) return 0xF58E;
+    if (vid == 0x3554 && pid == 0xF506) return 0xF505;
+    return pid;
+}
+
 bool IsCable(USHORT vid, USHORT pid) {
     bool hecate_cable = vid == 0x35BB && (pid == 0xD3FA || pid == 0xD3FC || pid == 0xD3FD);
     return (vid == 0x33E4 && GWolvesIsCable(pid)) || hecate_cable ||
@@ -113,7 +122,7 @@ void PollKysona(PollContext& ctx) {
                     ctx.Claim(vid, pid);
                     break;
                 }
-                s.key = L"kysona:" + Hex4(vid) + L":" + Hex4(pid);
+                s.key = L"kysona:" + Hex4(vid) + L":" + Hex4(KeyPid(vid, pid));
                 s.name = CleanName(HidProduct(*c), vid, pid);
                 s.kind = KindFromCollections(ctx.colls, vid, pid);
                 if (s.kind == DeviceKind::Other) s.kind = DeviceKind::Mouse;
