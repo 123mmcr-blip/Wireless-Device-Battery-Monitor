@@ -59,6 +59,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollRedragonEvision(ctx);
     PollPulsar(ctx);     // before Kysona, which also scans the 3710 vendor id
     PollAtkBitmouse(ctx);  // before Kysona, which would probe the NK dongle with the wrong protocol
+    PollChimera(ctx);      // Chimera V2 mouse (3554:F512), before Kysona which shares the 3554 vendor id
     PollKysona(ctx);
     PollKeychron(ctx);
     PollCherry(ctx);
