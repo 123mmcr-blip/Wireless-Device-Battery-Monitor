@@ -4,7 +4,7 @@
 #  3. Write the translation after " = " on each line. Lines left empty stay English.
 #  Keep {placeholders} exactly as they are; the app fills them in. "\n" is a line break.
 #  The file is plain UTF-8 text. Share it as a pull request so everyone gets it.
-@code = ko-KR
+@code = ko
 @name = 한국어
 
 # Menus, status and notifications
