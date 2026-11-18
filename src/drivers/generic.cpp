@@ -68,8 +68,11 @@ DeviceKind KindFromCategory(const std::wstring& c) {
 // KindFromCollections would call them a mouse. Matched on the exact HID vid/pid seen on the LE link.
 //  * 3151:4013 Attack Shark K86 (Rongyuan firmware) over Bluetooth, from the reporter's --dump in
 //    krisgfx9/Wireless-Device-Battery-Monitor#168. Its USB ids are 3151:4011 / 4015 (OpenRGB issue 4074).
+//  * 19F5:324A NuPhy WH80 over Bluetooth, hardware-tested. Its two keyboard collections
+//    coexist with a mouse collection; USB cable mode uses 19F5:A011 instead.
 DeviceKind KindFromBleIds(USHORT vid, USHORT pid) {
     if (vid == 0x3151 && pid == 0x4013) return DeviceKind::Keyboard;
+    if (vid == 0x19F5 && pid == 0x324A) return DeviceKind::Keyboard;
     return DeviceKind::Other;
 }
 
