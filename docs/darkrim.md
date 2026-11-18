@@ -42,8 +42,34 @@ with the matching sequence/command/type, index zero, count zero or one (the
 hardware uses zero), valid length/CRC, and a single well-formed battery TLV.
 Fragmented, unsolicited, malformed and out-of-range replies are ignored.
 
-Charging transitions, low/full boundaries, headset power-off behavior, Bluetooth
-and USB cable mode have not been hardware-tested. No claim of support is made
+## Observed battery precision and charging state
+
+Treat the percentage as a **coarse estimate, not a verified 1%-resolution gauge**.
+The owner's unit displayed charging progress in 10-percentage-point steps from
+40% to 90%. At 90%, five battery GET responses and one unsolicited notification
+all carried `DA`: `DA & 7F = 90`, with bit 7 indicating charging. After the owner
+unplugged the charging cable and continued using the 2.4 GHz receiver, another
+five GET responses and one notification all carried `5A`: still 90%, now with
+the charging bit cleared. All twelve frames passed CRC verification.
+
+Representative query responses (sequence 4):
+
+```text
+Charging:     FE 04 10 00 02 00 00 03 00 01 01 DA 70 ED
+Not charging: FE 04 10 00 02 00 00 03 00 01 01 5A E1 65
+```
+
+The driver and official application both take the percentage directly from the
+low seven bits. The driver does not round to tens, multiply a tier by ten, or
+interpolate intermediate values; synthetic 47% and 95% reports remain 47% and
+95% in the production parser. The observed coarse readings therefore originate
+upstream of the parser, in the headset/receiver's reporting. Finer hardware
+readings have not been observed. A full discharge curve has not been recorded,
+so a fixed 10% step at every discharge level or on other firmware is unconfirmed.
+
+Charging and subsequent non-charging states at 90% have been hardware-checked.
+Low/full boundaries, headset power-off behavior, Bluetooth
+and USB cable data mode have not been hardware-tested. No claim of support is made
 for those modes. No firmware updates, configuration changes, EQ commands,
 pairing changes, resets or vendor binaries are included in this implementation.
 
