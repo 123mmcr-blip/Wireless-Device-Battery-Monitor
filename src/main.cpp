@@ -339,7 +339,8 @@ std::wstring StatusText(const TrayEntry& e) {
     else if (e.lastPct >= 0) t = TF(L"{percent}% (last known)", { { L"percent", std::to_wstring(e.lastPct) } });
     else t = T(L"unknown");
     if (!s.detail.empty() && s.percent >= 0) t += L" (" + s.detail + L")";
-    if (s.charging) t += std::wstring(L", ") + T(L"charging");
+    if (s.full || (s.charging && s.percent >= 100)) t += std::wstring(L", ") + T(L"fully charged");
+    else if (s.charging) t += std::wstring(L", ") + T(L"charging");
     if (s.asleep) t += std::wstring(L", ") + T(L"asleep");
     return t;
 }
@@ -400,11 +401,13 @@ void ApplyEntry(TrayEntry& e) {
     int shown = s.percent >= 0 ? s.percent : e.lastPct;
     bool dim = s.percent < 0;
     Accent accent = AccentFor(s);
-    std::wstring sig = std::to_wstring(shown) + (s.charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k") +
+    // Fully charged on power: the normal green bar instead of the blue charging one.
+    bool charging = s.charging && !s.full && shown < 100;
+    std::wstring sig = std::to_wstring(shown) + (charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k") +
                        L"a" + std::to_wstring((int)accent);
     if (sig != e.iconSig || !e.icon) {
         if (e.icon) DestroyIcon(e.icon);
-        e.icon = IconFor(shown, s.charging, dim, accent);
+        e.icon = IconFor(shown, charging, dim, accent);
         e.iconSig = sig;
     }
     std::wstring tip = s.name + L"\n" + StatusText(e);
@@ -470,6 +473,7 @@ void UpdateWidget() {
         it.percent = e->st.percent >= 0 ? e->st.percent : e->lastPct;
         if (e->st.percent >= 0) it.text = T(e->st.levelText);
         it.charging = e->st.charging;
+        it.full = e->st.full || (e->st.charging && it.percent >= 100);
         it.dim = e->st.percent < 0;
         it.low = !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
@@ -769,7 +773,7 @@ std::vector<DeviceStatus> DemoDevices() {
         make(L"jbl:demo", L"JBL Quantum 910", DeviceKind::Headset, 70, 0x0ECB, false),
         make(L"coolermaster:demo", L"Cooler Master MM712", DeviceKind::Mouse, 12, 0x2516, false),
         make(L"steam:demo", L"Steam Controller", DeviceKind::Gamepad, 50, 0x28DE, true),
-        make(L"bt:demo-plain", L"Bluetooth Headphones", DeviceKind::Headset, 100, 0, false),
+        make(L"bt:demo-plain", L"Bluetooth Headphones", DeviceKind::Headset, 100, 0, true),  // charging at 100%: fully charged
     };
 }
 
@@ -900,7 +904,8 @@ int ListToConsole(bool dump) {
         else if (s.percent >= 0) line += std::to_wstring(s.percent) + L"%";
         else line += L"unknown";
         if (!s.detail.empty()) line += L" (" + s.detail + L")";
-        if (s.charging) line += L", charging";
+        if (s.full || (s.charging && s.percent >= 100)) line += L", fully charged";
+        else if (s.charging) line += L", charging";
         if (s.millivolts) line += L", " + std::to_wstring(s.millivolts) + L" mV";
         write(line + L"   (" + s.key + L")\n");
     }
