@@ -47,6 +47,8 @@ Hover for details. Click for the menu: every device (click one to hide or show i
 
 ## Supported devices
 
+Redragon M602-KS battery percentage was verified on the 2.4 GHz receiver (`258A:002F`).
+
 | Vendor | Devices | How |
 |---|---|---|
 | **ASTRO** | A50 X (`046D:0B0B`, tested), A50 Gen 5 (`046D:0B1C`), A50 Gen 4 (`9886:002C` tested, `002D`/`002A`), A50 Gen 3 (`9886:0014`/`0015`/`0018`/`001D`/`0026`), A20 Wireless (`9886:0037`–`0045`), via USB base station | Battery percentage, charging and docked status |
