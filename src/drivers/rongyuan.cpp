@@ -64,11 +64,24 @@ void PollRongyuan(PollContext& ctx) {
                 BYTE level = r[keyboard ? 2 : 3];
                 DeviceStatus s;
                 s.key = L"rongyuan:" + Hex4(vid) + L":" + Hex4(pid) + (keyboard ? L":kb" : L":ms");
-                if (vid == 0x3151 && pid == 0x402D && !keyboard) s.name = L"Attack Shark R3";
-                else if (generic) s.name = keyboard ? L"Wireless keyboard" : L"Wireless mouse";
-                else s.name = product;
+                if (vid == 0x3151 && pid == 0x402D && !keyboard) {
+                    s.name = L"Attack Shark R3";
+                } else if (vid == 0x3151 && pid == 0x5038 && keyboard) {
+                    // The receiver reports "MonsGeek 2.4G Wireless Keyboard".
+                    s.name = L"MonsGeek keyboard";
+                } else if (generic) {
+                    s.name = keyboard ? L"Wireless keyboard" : L"Wireless mouse";
+                } else {
+                    s.name = product;
+                }
                 s.kind = keyboard ? DeviceKind::Keyboard : DeviceKind::Mouse;
                 s.via = L"2.4 GHz receiver";
+
+                // Retain the last battery reading while this keyboard is sleeping.
+                if (vid == 0x3151 && pid == 0x5038 && keyboard) {
+                    s.graceSec = 1800;
+                }
+
                 if (level >= 1 && level <= 100) s.percent = level;
                 ctx.out.push_back(s);
                 any = true;
