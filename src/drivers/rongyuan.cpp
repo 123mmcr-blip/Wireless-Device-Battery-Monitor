@@ -65,6 +65,8 @@ void PollRongyuan(PollContext& ctx) {
                 DeviceStatus s;
                 s.key = L"rongyuan:" + Hex4(vid) + L":" + Hex4(pid) + (keyboard ? L":kb" : L":ms");
                 if (vid == 0x3151 && pid == 0x402D && !keyboard) s.name = L"Attack Shark R3";
+                else if (vid == 0x3151 && pid == 0x5006 && keyboard && product.find(L"Akko") != std::wstring::npos)
+                    s.name = L"Akko Air 01";
                 else if (generic) s.name = keyboard ? L"Wireless keyboard" : L"Wireless mouse";
                 else s.name = product;
                 s.kind = keyboard ? DeviceKind::Keyboard : DeviceKind::Mouse;
