@@ -99,6 +99,7 @@ void PollFantech(PollContext& ctx);   // Fantech Helios Go XD5 (wired 25A7:FA7B,
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
 void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
 void PollAtkBitmouse(PollContext& ctx);  // ATK / VXE NK NANO dongle 373B:1216 (before Kysona, same vendor id)
+void PollChimera(PollContext& ctx);      // Chimera V2 mouse (3554:F512, before Kysona, same vendor id)
 void PollKysona(PollContext& ctx);    // also Pulsar, ATK / VXE, Hitscan Hyperlight
 void PollHyperX(PollContext& ctx);
 void PollLogitechG435(PollContext& ctx);  // G435 headset on the 046D:0ADF dongle (not HID++)
@@ -158,6 +159,7 @@ void PollFantech(PollContext &ctx);       // Fantech Helios Go XD5 (wired 25A7:F
 std::wstring DumpXentaFrames();           // raw Xenta (1D57) status frames, for `--dump`
 void PollPulsar(PollContext &ctx);        // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
 void PollAtkBitmouse(PollContext &ctx);   // ATK / VXE NK NANO dongle 373B:1216 (before Kysona, same vendor id)
+void PollChimera(PollContext &ctx);       // Chimera V2 mouse (3554:F512, before Kysona, same vendor id)
 void PollKysona(PollContext &ctx);        // also Pulsar, ATK / VXE, Hitscan Hyperlight
 void PollHyperX(PollContext &ctx);
 void PollLogitechG435(PollContext &ctx); // G435 headset on the 046D:0ADF dongle (not HID++)
