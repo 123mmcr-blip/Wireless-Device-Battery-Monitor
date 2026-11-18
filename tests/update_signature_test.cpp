@@ -40,8 +40,8 @@ int main() {
     assert(!VerifySignature(std::string(MaxSumsBytes + 1, 'a'), signature, key));
     assert(!VerifySignature(sums, std::string(MaxSignatureBytes + 1, 'A'), key));
 
-    // The development header has no key, so nothing verifies as a release.
-    assert(!ReleaseKeyConfigured());
+    // The release key is configured, and a signature by any other key (this test key) is not a release.
+    assert(ReleaseKeyConfigured());
     assert(!VerifyReleaseSignature(sums, signature));
 
     // Hash lookup in the list.
