@@ -229,9 +229,11 @@ Update information appears only in this menu: battery icons, percentages and too
 same, and automatic checks never show a notification or dialog. Turn off
 **Automatically check for updates** in the menu to disable background checks.
 
-For an installed copy, click the update entry and **Download and install**. The app downloads
-the Windows installer, verifies its size and SHA-256 against GitHub's release metadata, and
-updates the existing installation after your confirmation. Settings and startup preference are
+For an installed copy, click the update entry and **Download and install**. Nothing is installed
+without that click. The app downloads the release's `SHA256SUMS.txt` and its signature, checks the
+signature against the maintainer's public key built into the app, downloads the Windows installer,
+and runs it only if its SHA-256 is the one in the signed list (and the one GitHub lists for it). It
+then updates the existing installation. Settings and startup preference are
 preserved, and the app reopens after installation. An installation for all users can ask for
 administrator permission. **Release notes** opens the official release page; **Later** keeps
 your current version. Portable copies offer the release page for downloading the ZIP manually.
@@ -240,8 +242,13 @@ Checks contact GitHub's public API without an account or token. No device or bat
 is sent. Offline failures and GitHub rate limits leave battery monitoring running; a previously
 found release stays in the menu until a successful check supersedes it or it is installed.
 Cancelling a download waits for the current network operation to finish its finite timeout.
-The installer never restarts Windows automatically. SHA-256 checks integrity; it does not add a
-publisher signature or remove Windows security prompts.
+The installer never restarts Windows automatically.
+
+**Why updates are safe to install:** the signing key never goes to GitHub. The maintainer signs
+each release's checksum list on their own PC (see [docs/releasing.md](docs/releasing.md)), so
+even someone who took over the GitHub account or its build workflow could not publish an update
+the app would install. A release without a valid signature is shown in the menu but can only be
+downloaded by hand. The signature does not replace Windows' own SmartScreen or UAC prompts.
 
 Install the first release containing this feature manually once. Development/test builds disable
 official update checks so local changes cannot be replaced accidentally. Updates for Linux and
