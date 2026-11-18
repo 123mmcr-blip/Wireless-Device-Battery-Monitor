@@ -8,6 +8,8 @@
 // A reply is recognised by its first three bytes (the echoed command), as the AK820 Pro tools do; its
 // checksum is not checked. The keyboard only reports its level while it is switched to 2.4G mode.
 // The protocol is read-only.
+// MCHOSE K87 receivers on the same 05AC:024F id expose a different layout (the BY collection on
+// interface 1, no FF60 on interface 3); aula.cpp runs first and reads those.
 // From github.com/donglover69/sonix-keyboard-studio (README, "2.4G dongles"); the AK820 Pro receiver
 // 0C45:FDFD and the echo match from github.com/deddroid/ak820-rs (src/device.rs, src/protocol.rs) and
 // github.com/usharik/ak820-studio (Sources/AK820Kit/Keyboard.swift).
