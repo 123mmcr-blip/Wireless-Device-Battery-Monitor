@@ -128,6 +128,9 @@ int main() {
     assert(ctx.out.size() == 1 && ctx.out[0].name == L"HyperX Pulsefire Haste 2 Wireless" && ctx.out[0].percent == 33);
     ctx = Poll(Collection(0x0F98, 0xFF00), Dongle(Link(1), Battery(34)));
     assert(ctx.out.size() == 1 && ctx.out[0].key == L"hyperx:0F98" && ctx.out[0].percent == 34);
+    ctx = Poll(Collection(0x0DA0, 0xFF90), Dongle(Link(1), Battery(21)));
+    assert(ctx.out.size() == 1 && ctx.out[0].key == L"hyperx:0DA0" && ctx.out[0].name == L"HyperX Pulsefire Haste 2 Mini" &&
+           ctx.out[0].percent == 21);
 
     // No reply at all (dongle without a mouse): nothing listed, nothing claimed.
     ctx = Poll(core, {});
