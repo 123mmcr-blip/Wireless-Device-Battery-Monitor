@@ -6,6 +6,7 @@
 #include <hidclass.h>
 
 #include <algorithm>
+#include <climits>
 #include <cstdio>
 #include <map>
 #include <set>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "devices.h"
+#include "report.h"
 #include "widget.h"
 
 namespace {
@@ -27,9 +29,11 @@ constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
 
 enum MenuId : UINT {
-    ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY,
+    ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
+    ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
 };
+enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_STRIDE = 4 };
 
 const wchar_t* kAppName = L"Wireless Battery";
 const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -45,6 +49,7 @@ bool g_lightTaskbar;
 bool g_wantWidget = true;      // user's choice: taskbar widget (default) or tray icons
 bool g_useWidget = false;      // what is actually shown right now
 bool g_hideLastKnown = false;  // hide (last known) / asleep devices from taskbar and tray
+std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all", "main" or one monitor id
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
 
 struct TrayEntry {
@@ -115,6 +120,28 @@ void SaveHidden() {
 
 bool IsHidden(const std::wstring& key) { return g_hidden.count(key) != 0; }
 
+// The user's left-to-right order (device keys), stored as a REG_MULTI_SZ. Devices not in it follow
+// in the default order (by type, then name).
+std::vector<std::wstring> g_order;
+
+void LoadOrder() {
+    DWORD size = 0;
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"DeviceOrder", RRF_RT_REG_MULTI_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS || !size)
+        return;
+    std::vector<wchar_t> buf(size / sizeof(wchar_t) + 1, 0);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"DeviceOrder", RRF_RT_REG_MULTI_SZ, nullptr, buf.data(), &size) != ERROR_SUCCESS)
+        return;
+    for (const wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) g_order.push_back(p);
+}
+
+void SaveOrder() {
+    if (g_order.size() > 64) g_order.resize(64);  // forget long-gone devices
+    std::wstring multi;
+    for (const auto& k : g_order) { multi += k; multi.push_back(L'\0'); }
+    multi.push_back(L'\0');
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"DeviceOrder", REG_MULTI_SZ, multi.data(), (DWORD)(multi.size() * sizeof(wchar_t)));
+}
+
 bool IsEntryHidden(const TrayEntry& e) {
     return IsHidden(e.st.key) || (g_hideLastKnown && (e.st.asleep || (e.st.percent < 0 && e.lastPct >= 0)));
 }
@@ -136,6 +163,21 @@ bool LoadHideLastKnown() { return LoadBoolSetting(L"HideLastKnownDevices", false
 void SaveHideLastKnown(bool on) { SaveBoolSetting(L"HideLastKnownDevices", on); }
 bool LoadWidgetBackground() { return LoadBoolSetting(L"WidgetBackground", false); }
 void SaveWidgetBackground(bool on) { SaveBoolSetting(L"WidgetBackground", on); }
+std::wstring LoadWidgetMonitor() {
+    wchar_t buf[512] = {};
+    DWORD size = sizeof(buf) - sizeof(wchar_t);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"WidgetMonitor", RRF_RT_REG_SZ, nullptr, buf, &size) == ERROR_SUCCESS && buf[0])
+        return buf;
+    return LoadBoolSetting(L"OtherTaskbars", true) ? L"all" : L"main";  // the earlier on/off toggle
+}
+void SaveWidgetMonitor(const std::wstring& v) {
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"WidgetMonitor", REG_SZ, v.c_str(), (DWORD)((v.size() + 1) * sizeof(wchar_t)));
+}
+void SetWidgetMonitor(const std::wstring& v) {
+    g_widgetMonitor = v;
+    SaveWidgetMonitor(v);
+    widget::SetMonitorChoice(v);
+}
 
 bool AutostartEnabled() {
     wchar_t buf[MAX_PATH * 2];
@@ -363,7 +405,7 @@ void ApplyEntry(TrayEntry& e) {
     e.added = true;
 }
 
-int KindOrder(DeviceKind k) {  // headset first, then mouse, ... (matches the left-to-right layout)
+int KindOrder(DeviceKind k) {  // default order: headset first, then mouse, ...
     switch (k) {
         case DeviceKind::Headset:  return 0;
         case DeviceKind::Mouse:    return 1;
@@ -374,15 +416,31 @@ int KindOrder(DeviceKind k) {  // headset first, then mouse, ... (matches the le
     }
 }
 
-void UpdateWidget() {
-    if (!g_useWidget) return;
-    std::vector<const TrayEntry*> list;
+bool IsShown(const TrayEntry& e) { return e.st.connected && !IsEntryHidden(e); }
+
+// Entries in left-to-right order: the user's order first, then the rest by type and name. Works the
+// same for every kind of device (receivers, Bluetooth, controllers, HeadsetControl) as it only uses
+// the device key.
+std::vector<TrayEntry*> OrderedEntries(bool shownOnly) {
+    std::vector<TrayEntry*> list;
     for (auto& [k, e] : g_entries)
-        if (e.st.connected && !IsEntryHidden(e)) list.push_back(&e);
-    std::sort(list.begin(), list.end(), [](const TrayEntry* a, const TrayEntry* b) {
+        if (!shownOnly || IsShown(e)) list.push_back(&e);
+    auto rank = [](const TrayEntry* e) {
+        auto it = std::find(g_order.begin(), g_order.end(), e->st.key);
+        return it == g_order.end() ? INT_MAX : (int)(it - g_order.begin());
+    };
+    std::stable_sort(list.begin(), list.end(), [&](const TrayEntry* a, const TrayEntry* b) {
+        int ra = rank(a), rb = rank(b);
+        if (ra != rb) return ra < rb;
         int ka = KindOrder(a->st.kind), kb = KindOrder(b->st.kind);
         return ka != kb ? ka < kb : a->st.name < b->st.name;
     });
+    return list;
+}
+
+void UpdateWidget() {
+    if (!g_useWidget) return;
+    std::vector<TrayEntry*> list = OrderedEntries(true);
     std::vector<WidgetItem> items;
     std::wstring tip;
     for (auto* e : list) {
@@ -488,15 +546,53 @@ void RedrawAll() {
     UpdatePlaceholder();
 }
 
+void ToggleHidden(const std::wstring& key) {
+    if (!g_hidden.erase(key)) g_hidden.insert(key);
+    SaveHidden();
+    auto it = g_entries.find(key);
+    if (it != g_entries.end()) ApplyEntry(it->second);
+    UpdatePlaceholder();
+    UpdateWidget();
+}
+
+// Swaps a shown device with its neighbour (dir -1 = left, +1 = right) and remembers the new order.
+void MoveEntry(const std::wstring& key, int dir) {
+    std::vector<TrayEntry*> list = OrderedEntries(true);
+    auto pos = std::find_if(list.begin(), list.end(), [&](const TrayEntry* e) { return e->st.key == key; });
+    if (pos == list.end()) return;
+    ptrdiff_t i = pos - list.begin(), j = i + dir;
+    if (j < 0 || j >= (ptrdiff_t)list.size()) return;
+    std::swap(list[i], list[j]);
+    std::vector<std::wstring> order;
+    for (auto* e : list) order.push_back(e->st.key);
+    for (auto& k : g_order)  // keep the places of devices that are not shown right now
+        if (std::find(order.begin(), order.end(), k) == order.end()) order.push_back(k);
+    g_order = order;
+    SaveOrder();
+    UpdateWidget();
+}
+
 void ShowMenu() {
     ApplyMenuTheme(g_lightTaskbar);
     HMENU m = CreatePopupMenu();
-    std::vector<std::wstring> keys;  // menu id ID_DEVICE_FIRST + i -> device key
-    if (g_entries.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"No devices with battery info found");
-    else AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Click a device to show or hide it");
-    for (auto& [k, e] : g_entries) {
-        std::wstring line = e.st.name + L":  " + StatusText(e) + L"   [" + e.st.via + L"]";
-        AppendMenuW(m, MF_STRING | (IsHidden(k) ? 0 : MF_CHECKED), ID_DEVICE_FIRST + (UINT)keys.size(), line.c_str());
+    std::vector<std::wstring> keys;  // device index -> device key; menu id ID_DEVICE_FIRST + index * DEV_STRIDE + command
+    std::vector<TrayEntry*> all = OrderedEntries(false), shown = OrderedEntries(true);
+    if (all.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"No devices with battery info found");
+    else AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Point at a device to show, hide or move it");
+    for (TrayEntry* e : all) {
+        const std::wstring& k = e->st.key;
+        UINT base = ID_DEVICE_FIRST + (UINT)keys.size() * DEV_STRIDE;
+        auto pos = std::find(shown.begin(), shown.end(), e);
+        bool canLeft = pos != shown.end() && pos != shown.begin();
+        bool canRight = pos != shown.end() && pos + 1 != shown.end();
+        HMENU sub = CreatePopupMenu();
+        AppendMenuW(sub, MF_STRING | (IsHidden(k) ? 0 : MF_CHECKED), base + DEV_TOGGLE,
+                    g_wantWidget ? L"Show on the taskbar" : L"Show in the tray");
+        AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(sub, MF_STRING | (canLeft ? 0 : MF_GRAYED), base + DEV_LEFT, g_wantWidget ? L"Move left" : L"Move up");
+        AppendMenuW(sub, MF_STRING | (canRight ? 0 : MF_GRAYED), base + DEV_RIGHT, g_wantWidget ? L"Move right" : L"Move down");
+        std::wstring line = e->st.name + L":  " + StatusText(*e) + L"   [" + e->st.via + L"]";
+        AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         keys.push_back(k);
     }
     AppendMenuW(m, MF_STRING | (g_hideLastKnown ? MF_CHECKED : 0), ID_HIDE_LAST_KNOWN, L"Hide last known / asleep devices");
@@ -506,9 +602,32 @@ void ShowMenu() {
     CheckMenuRadioItem(m, ID_MODE_WIDGET, ID_MODE_TRAY, g_wantWidget ? ID_MODE_WIDGET : ID_MODE_TRAY, MF_BYCOMMAND);
     UINT bgFlags = MF_STRING | (g_widgetBackground ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
     AppendMenuW(m, bgFlags, ID_WIDGET_BACKGROUND, L"Background behind taskbar text (for transparent taskbars)");
+    // With more than one monitor: choose which taskbars show the widget (all, main only, or one monitor).
+    auto monitors = widget::OtherMonitors();
+    if (monitors.size() > 31) monitors.resize(31);
+    if (!monitors.empty()) {
+        HMENU sub = CreatePopupMenu();
+        UINT f = MF_STRING | (g_wantWidget ? 0 : MF_GRAYED);
+        AppendMenuW(sub, f, ID_MONITOR_ALL, L"All monitors");
+        AppendMenuW(sub, f, ID_MONITOR_MAIN, L"Main monitor only");
+        UINT checked = g_widgetMonitor == L"main" ? ID_MONITOR_MAIN : ID_MONITOR_ALL;
+        bool found = g_widgetMonitor == L"all" || g_widgetMonitor == L"main";
+        for (UINT i = 0; i < monitors.size(); i++) {
+            AppendMenuW(sub, f, ID_MONITOR_FIRST + i, (monitors[i].label + L" only").c_str());
+            if (monitors[i].id == g_widgetMonitor) { checked = ID_MONITOR_FIRST + i; found = true; }
+        }
+        if (!found) {  // the chosen monitor is unplugged: the main taskbar shows the widget meanwhile
+            AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_MONITOR_FIRST + 31, L"Chosen monitor (not connected, shown on main)");
+            checked = ID_MONITOR_FIRST + 31;
+        }
+        CheckMenuRadioItem(sub, ID_MONITOR_ALL, ID_MONITOR_FIRST + 31, checked, MF_BYCOMMAND);
+        AppendMenuW(m, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, L"Show the widget on");
+    }
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_REFRESH, L"Refresh now");
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), ID_AUTOSTART, L"Start with Windows");
+    AppendMenuW(m, MF_STRING, ID_REPORT, L"Request support for a device...");
+    AppendMenuW(m, MF_STRING, ID_SUPPORT, L"Support the project...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_EXIT, L"Exit");
     POINT pt;
@@ -522,18 +641,23 @@ void ShowMenu() {
         case ID_AUTOSTART: SetAutostart(!AutostartEnabled()); break;
         case ID_HIDE_LAST_KNOWN: SetHideLastKnown(!g_hideLastKnown); break;
         case ID_WIDGET_BACKGROUND: SetWidgetBackground(!g_widgetBackground); break;
+        case ID_MONITOR_ALL: SetWidgetMonitor(L"all"); break;
+        case ID_MONITOR_MAIN: SetWidgetMonitor(L"main"); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
+        case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
+        case ID_REPORT: report::Show(g_inst, g_hwnd); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
         default:
-            if (cmd >= ID_DEVICE_FIRST && cmd < ID_DEVICE_FIRST + keys.size()) {
-                const std::wstring& key = keys[cmd - ID_DEVICE_FIRST];
-                if (!g_hidden.erase(key)) g_hidden.insert(key);
-                SaveHidden();
-                auto it = g_entries.find(key);
-                if (it != g_entries.end()) ApplyEntry(it->second);
-                UpdatePlaceholder();
-                UpdateWidget();
+            if (cmd >= ID_MONITOR_FIRST && cmd < ID_MONITOR_FIRST + monitors.size()) {
+                SetWidgetMonitor(monitors[cmd - ID_MONITOR_FIRST].id);
+            } else if (cmd >= ID_DEVICE_FIRST && cmd < ID_DEVICE_FIRST + keys.size() * DEV_STRIDE) {
+                std::wstring key = keys[(cmd - ID_DEVICE_FIRST) / DEV_STRIDE];
+                switch ((cmd - ID_DEVICE_FIRST) % DEV_STRIDE) {
+                    case DEV_TOGGLE: ToggleHidden(key); break;
+                    case DEV_LEFT:   MoveEntry(key, -1); break;
+                    case DEV_RIGHT:  MoveEntry(key, +1); break;
+                }
             }
     }
 }
@@ -625,7 +749,29 @@ int ListToConsole(bool dump) {
         WriteFile(out, u.data(), (DWORD)u.size(), &w, nullptr);
     };
     if (dump) {
-        write(DumpHidCollections());
+        // Also saved to a file: PowerShell does not wait for this windowed exe, so console output can end up
+        // after the prompt or get lost, and a double-click has no console at all.
+        std::wstring text = DumpHidCollections();
+        wchar_t path[MAX_PATH] = {};
+        GetTempPathW(MAX_PATH, path);
+        wcscat_s(path, L"WirelessBattery-dump.txt");
+        HANDLE f = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (f != INVALID_HANDLE_VALUE) {
+            std::wstring crlf;
+            for (wchar_t ch : text) crlf += ch == L'\n' ? std::wstring(L"\r\n") : std::wstring(1, ch);
+            int n = WideCharToMultiByte(CP_UTF8, 0, crlf.c_str(), (int)crlf.size(), nullptr, 0, nullptr, nullptr);
+            std::string u = "\xEF\xBB\xBF" + std::string(n, 0);  // UTF-8 byte order mark, so Notepad shows it right
+            WideCharToMultiByte(CP_UTF8, 0, crlf.c_str(), (int)crlf.size(), u.data() + 3, n, nullptr, nullptr);
+            DWORD w;
+            WriteFile(f, u.data(), (DWORD)u.size(), &w, nullptr);
+            CloseHandle(f);
+        }
+        if (out && out != INVALID_HANDLE_VALUE) {
+            write(text);
+            write(std::wstring(L"\nAlso saved to ") + path + L"\n");
+        } else {
+            ShellExecuteW(nullptr, L"open", path, nullptr, nullptr, SW_SHOWNORMAL);  // no console: show the file
+        }
         return 0;
     }
     auto list = PollAllDevices();
@@ -650,6 +796,16 @@ int ListToConsole(bool dump) {
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     if (cmdLine && wcsstr(cmdLine, L"--list")) return ListToConsole(false);
     if (cmdLine && wcsstr(cmdLine, L"--dump")) return ListToConsole(true);
+    if (cmdLine && wcsstr(cmdLine, L"--report")) {  // the "Request support for a device" window on its own
+        report::Show(inst, nullptr);
+        MSG msg;
+        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+            if (report::PreTranslate(&msg)) continue;
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        return 0;
+    }
     if (cmdLine && wcsstr(cmdLine, L"--quit")) {  // used by the installer before upgrading/uninstalling
         if (HWND w = FindWindowW(L"WirelessBatteryWnd", nullptr)) {
             PostMessageW(w, WM_CLOSE, 0, 0);
@@ -686,7 +842,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_hideLastKnown = LoadHideLastKnown();
     g_widgetBackground = LoadWidgetBackground();
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
+    g_widgetMonitor = LoadWidgetMonitor();
+    widget::SetMonitorChoice(g_widgetMonitor);
     LoadHidden();
+    LoadOrder();
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);
@@ -694,6 +853,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
+        if (report::PreTranslate(&m)) continue;
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
