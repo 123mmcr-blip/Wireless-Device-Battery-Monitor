@@ -155,7 +155,7 @@ void PollAstro(PollContext& ctx) {
                 (int)reply[2] + 3 > n || reply[3] != 0 || reply[4] != 0x06 ||
                 (reply[5] != 0 && reply[5] != 0x0C) || reply[6] > 100) continue;
             DeviceStatus s;
-            s.key = L"astro:" + c.path;
+            s.key = ctx.StableKey(L"astro:" + Hex4(c.pid));
             s.name = c.pid == 0x0B0B ? L"ASTRO A50 X" : L"ASTRO A50 Gen 5";
             s.kind = DeviceKind::Headset;
             s.via = L"USB base station";

@@ -24,6 +24,20 @@ struct PollContext
         if (!out.back().vid) out.back().vid = vid;
         Claim(vid, pid);
     }
+    // A device key that stays the same when the receiver moves to another USB port (HID paths change
+    // with the port, so they must not be part of a key): `base` for the first such device in this poll,
+    // then `base#2`, `base#3` ... for more identical ones. Settings and battery history follow the key.
+    std::wstring StableKey(const std::wstring &base) const
+    {
+        auto taken = [&](const std::wstring &k) {
+            for (const auto &s : out)
+                if (s.key == k && s.connected) return true;
+            return false;
+        };
+        if (!taken(base)) return base;
+        for (int n = 2;; ++n)
+            if (!taken(base + L"#" + std::to_wstring(n))) return base + L"#" + std::to_wstring(n);
+    }
     // Distinct (vid, pid) pairs for a vendor that are not claimed yet.
     std::vector<std::pair<USHORT, USHORT>> Products(USHORT vid) const
     {

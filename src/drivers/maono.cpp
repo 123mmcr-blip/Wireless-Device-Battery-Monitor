@@ -170,7 +170,7 @@ void PollMaono(PollContext &ctx)
             continue;
 
         DeviceStatus status;
-        status.key = L"maono:pd200w:" + collection->path;
+        status.key = ctx.StableKey(L"maono:pd200w");
         status.name = L"MAONO PD200W";
         status.kind = DeviceKind::Other;
         status.via = L"2.4 GHz receiver";

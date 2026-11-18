@@ -75,7 +75,7 @@ void PollModel(PollContext& ctx, const Model& model) {
         if (percent < 0) continue;
 
         DeviceStatus status;
-        status.key = L"darmoshark:" + coll->path;
+        status.key = ctx.StableKey(L"darmoshark:" + Hex4(model.receiver));
         status.name = model.name;
         status.kind = DeviceKind::Mouse;
         status.via = L"2.4 GHz receiver";
