@@ -51,6 +51,13 @@ void PollAtkSerial(PollContext& ctx); // ATK N9 Pro / N9 Ultra headsets (virtual
 void PollKeychron(PollContext& ctx);  // Keychron mice, Nape Pro trackball (Link-KM receiver)
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0
 void PollEndgame(PollContext& ctx);   // Endgame Gear 4K mice (OP1w 4k, XM2w 4k) on the 4K dongle
+void PollEndgameWe(PollContext& ctx);     // Endgame Gear XM2we on its original receiver (3367:1961)
+void PollAtkKeyboard(PollContext& ctx);   // ATK V75X keyboard (320F:5088 receiver, 5055 cable)
+void PollBarracudaPro(PollContext& ctx);  // Razer Barracuda Pro (1532:053A), before the generic Razer driver
+void PollSteelSeriesElite(PollContext& ctx);  // SteelSeries Arctis Nova Elite base station (1038:2244)
+void PollAudeze(PollContext& ctx);        // Audeze Maxwell (VID 3329) dongle or cable
+void PollNzxt(PollContext& ctx);          // NZXT Lift Elite Wireless (1E71:2101 / 2129)
+void PollPlantronics(PollContext& ctx);   // Poly / Plantronics headsets behind the BT600 adapter (047F)
 void PollVaxee(PollContext& ctx);     // VAXEE 4K receiver / NP-01S V2 cable, read-only battery commands
 void PollWlmouse(PollContext& ctx);   // WLMouse Beast X family (VID 36A7)
 void PollFinalmouse(PollContext& ctx);  // Finalmouse UltralightX / Starlight X dongles (VID 361D), read-only GETs

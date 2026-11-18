@@ -51,12 +51,14 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollDareu(ctx);
     PollDarmoshark(ctx);
     PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
+    PollAtkKeyboard(ctx);
     PollPulsar(ctx);     // before Kysona, which also scans the 3710 vendor id
     PollAtkBitmouse(ctx);  // before Kysona, which would probe the NK dongle with the wrong protocol
     PollKysona(ctx);
     PollKeychron(ctx);
     PollLamzu(ctx);
     PollEndgame(ctx);
+    PollEndgameWe(ctx);
     PollVaxee(ctx);
     PollWlmouse(ctx);
     PollFinalmouse(ctx);
@@ -81,12 +83,17 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollMiscMice(ctx);
     PollFantech(ctx);
     PollRazerHeadsets(ctx);  // before the generic Razer driver, which shares the vendor id
+    PollBarracudaPro(ctx);   // before the generic Razer driver as well
     PollHyperX(ctx);
     PollLogitechG435(ctx);  // before the HID++ driver, which shares the vendor id
     PollAstro(ctx);
     PollLogitech(ctx);
     PollRazer(ctx);
+    PollSteelSeriesElite(ctx);
     PollSteelSeries(ctx);
+    PollAudeze(ctx);
+    PollNzxt(ctx);
+    PollPlantronics(ctx);
     PollCorsair(ctx);
     PollCoolerMaster(ctx);
     PollPlayStation(ctx);
