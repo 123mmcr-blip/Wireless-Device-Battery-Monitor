@@ -32,7 +32,7 @@ constexpr UINT PLACEHOLDER_ID = 1;
 
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
-    ID_BRAND_COLORS, ID_STACKED,
+    ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED,
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
@@ -53,6 +53,7 @@ bool g_lightTaskbar;
 bool g_wantWidget = true;      // user's choice: taskbar widget (default) or tray icons
 bool g_useWidget = false;      // what is actually shown right now
 bool g_hideLastKnown = false;  // hide (last known) / asleep devices from taskbar and tray
+bool g_showDisconnectedDevices = false;  // opt-in, explicit driver-reported offline devices only
 std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all", "main" or one monitor id
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
 bool g_stacked = false;      // icon above the percentage (menu option)
@@ -149,7 +150,10 @@ void SaveOrder() {
 }
 
 bool IsEntryHidden(const TrayEntry& e) {
-    return IsHidden(e.st.key) || (g_hideLastKnown && (e.st.asleep || (e.st.percent < 0 && e.lastPct >= 0)));
+    if (IsHidden(e.st.key)) return true;
+    // An explicitly offline device is not just a stale battery reading.
+    if (g_showDisconnectedDevices && !e.st.connected) return false;
+    return g_hideLastKnown && (e.st.asleep || (e.st.percent < 0 && e.lastPct >= 0));
 }
 
 bool LoadBoolSetting(const wchar_t* name, bool defaultVal) {
@@ -167,6 +171,8 @@ bool LoadWidgetMode() { return LoadBoolSetting(L"TaskbarWidget", true); }
 void SaveWidgetMode(bool on) { SaveBoolSetting(L"TaskbarWidget", on); }
 bool LoadHideLastKnown() { return LoadBoolSetting(L"HideLastKnownDevices", false); }
 void SaveHideLastKnown(bool on) { SaveBoolSetting(L"HideLastKnownDevices", on); }
+bool LoadShowDisconnectedDevices() { return LoadBoolSetting(L"ShowDisconnectedDevices", false); }
+void SaveShowDisconnectedDevices(bool on) { SaveBoolSetting(L"ShowDisconnectedDevices", on); }
 bool LoadWidgetBackground() { return LoadBoolSetting(L"WidgetBackground", false); }
 void SaveWidgetBackground(bool on) { SaveBoolSetting(L"WidgetBackground", on); }
 std::wstring LoadWidgetMonitor() {
@@ -392,27 +398,30 @@ void UpdatePlaceholder() {
 
 void ApplyEntry(TrayEntry& e) {
     const auto& s = e.st;
-    bool visible = s.connected && !g_useWidget && !IsEntryHidden(e);
+    bool visible = !g_useWidget && !IsEntryHidden(e) && (s.connected || g_showDisconnectedDevices);
     if (!visible) {
         if (e.added) { TrayDelete(e.uid); e.added = false; }
         return;
     }
-    int shown = s.percent >= 0 ? s.percent : e.lastPct;
-    bool dim = s.percent < 0;
+    // Never display an old percentage as a live reading for an explicitly offline device.
+    int shown = !s.connected ? -1 : (s.percent >= 0 ? s.percent : e.lastPct);
+    bool dim = !s.connected || s.percent < 0;
+    bool charging = s.connected && !s.asleep && s.charging;
     Accent accent = AccentFor(s);
-    std::wstring sig = std::to_wstring(shown) + (s.charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k") +
-                       L"a" + std::to_wstring((int)accent);
+    std::wstring sig = std::to_wstring(shown) + (charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k") +
+                       L"a" + std::to_wstring((int)accent) + (s.connected ? L"|on" : L"|off");
     if (sig != e.iconSig || !e.icon) {
         if (e.icon) DestroyIcon(e.icon);
-        e.icon = IconFor(shown, s.charging, dim, accent);
+        e.icon = s.connected ? IconFor(shown, charging, dim, accent)
+                             : RenderIcon(L"\u00D7", -1, Foreground(), Foreground(), true);
         e.iconSig = sig;
     }
     std::wstring tip = s.name + L"\n" + StatusText(e);
 
     const wchar_t* infoTitle = nullptr;
     std::wstring info;
-    if (s.charging || shown > LOW_BATTERY + 10) e.lowWarned = false;
-    if (!s.charging && s.percent >= 0 && s.percent <= LOW_BATTERY && !e.lowWarned) {
+    if (charging || shown > LOW_BATTERY + 10) e.lowWarned = false;
+    if (s.connected && !charging && s.percent >= 0 && s.percent <= LOW_BATTERY && !e.lowWarned) {
         e.lowWarned = true;
         infoTitle = T(L"Low battery");
         info = TF(L"{name} is at {percent}%", { { L"name", s.name }, { L"percent", std::to_wstring(s.percent) } });
@@ -432,7 +441,7 @@ int KindOrder(DeviceKind k) {  // default order: headset first, then mouse, ...
     }
 }
 
-bool IsShown(const TrayEntry& e) { return e.st.connected && !IsEntryHidden(e); }
+bool IsShown(const TrayEntry& e) { return (e.st.connected || g_showDisconnectedDevices) && !IsEntryHidden(e); }
 
 // Entries in left-to-right order: the user's order first, then the rest by type and name. Works the
 // same for every kind of device (receivers, Bluetooth, controllers, HeadsetControl) as it only uses
@@ -467,11 +476,13 @@ void UpdateWidget() {
     for (auto* e : list) {
         WidgetItem it;
         it.kind = e->st.kind;
-        it.percent = e->st.percent >= 0 ? e->st.percent : e->lastPct;
-        if (e->st.percent >= 0) it.text = T(e->st.levelText);
-        it.charging = e->st.charging;
-        it.dim = e->st.percent < 0;
-        it.low = !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
+        bool offline = !e->st.connected;
+        it.percent = offline ? -1 : (e->st.percent >= 0 ? e->st.percent : e->lastPct);
+        if (offline) it.text = L"\u00D7";  // clear status, not a stale percentage
+        else if (e->st.percent >= 0) it.text = T(e->st.levelText);
+        it.charging = !offline && !e->st.asleep && e->st.charging;
+        it.dim = offline || e->st.percent < 0;
+        it.low = !offline && !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
         it.label = labels[items.size()];
         it.accent = AccentFor(e->st);
@@ -548,6 +559,14 @@ void SetWidgetBackground(bool on) {
 void SetHideLastKnown(bool on) {
     g_hideLastKnown = on;
     SaveHideLastKnown(on);
+    for (auto& [k, e] : g_entries) ApplyEntry(e);
+    UpdatePlaceholder();
+    UpdateWidget();
+}
+
+void SetShowDisconnectedDevices(bool on) {
+    g_showDisconnectedDevices = on;
+    SaveShowDisconnectedDevices(on);
     for (auto& [k, e] : g_entries) ApplyEntry(e);
     UpdatePlaceholder();
     UpdateWidget();
@@ -641,6 +660,7 @@ void ShowMenu() {
         keys.push_back(k);
     }
     AppendMenuW(m, MF_STRING | (g_hideLastKnown ? MF_CHECKED : 0), ID_HIDE_LAST_KNOWN, T(L"Hide last known / asleep devices"));
+    AppendMenuW(m, MF_STRING | (g_showDisconnectedDevices ? MF_CHECKED : 0), ID_SHOW_DISCONNECTED, T(L"Show disconnected devices"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (g_wantWidget ? MF_CHECKED : 0), ID_MODE_WIDGET, T(L"Show on the taskbar (icon + percentage)"));
     AppendMenuW(m, MF_STRING | (!g_wantWidget ? MF_CHECKED : 0), ID_MODE_TRAY, T(L"Show as tray icons"));
@@ -706,6 +726,7 @@ void ShowMenu() {
         case ID_REFRESH: SetEvent(g_refreshEvt); break;
         case ID_AUTOSTART: SetAutostart(!AutostartEnabled()); break;
         case ID_HIDE_LAST_KNOWN: SetHideLastKnown(!g_hideLastKnown); break;
+        case ID_SHOW_DISCONNECTED: SetShowDisconnectedDevices(!g_showDisconnectedDevices); break;
         case ID_WIDGET_BACKGROUND: SetWidgetBackground(!g_widgetBackground); break;
         case ID_MONITOR_ALL: SetWidgetMonitor(L"all"); break;
         case ID_LANG_AUTO: SetLanguage(L""); break;
@@ -753,7 +774,7 @@ std::vector<DeviceStatus> DemoDevices() {
         s.via = L"demo";
         return s;
     };
-    return {
+    std::vector<DeviceStatus> devices = {
         make(L"razer:demo", L"Razer DeathAdder V3 Pro", DeviceKind::Mouse, 78, 0x1532, false),
         make(L"demo:logi", L"Logitech G PRO X 2 LIGHTSPEED", DeviceKind::Headset, 64, 0x046D, false),
         make(L"steelseries:demo", L"SteelSeries Arctis Nova 7", DeviceKind::Headset, 55, 0, false),
@@ -771,6 +792,11 @@ std::vector<DeviceStatus> DemoDevices() {
         make(L"steam:demo", L"Steam Controller", DeviceKind::Gamepad, 50, 0x28DE, true),
         make(L"bt:demo-plain", L"Bluetooth Headphones", DeviceKind::Headset, 100, 0, false),
     };
+    DeviceStatus offline = make(L"demo:offline-receiver", L"Offline wireless headset", DeviceKind::Headset, -1, 0, false);
+    offline.via = L"2.4 GHz receiver";
+    offline.connected = false;
+    devices.push_back(offline);  // hidden by default, shown when the opt-in setting is enabled
+    return devices;
 }
 
 DWORD WINAPI Worker(LPVOID) {
@@ -958,6 +984,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_stopEvt = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_wantWidget = LoadWidgetMode();
     g_hideLastKnown = LoadHideLastKnown();
+    g_showDisconnectedDevices = LoadShowDisconnectedDevices();
     g_widgetBackground = LoadWidgetBackground();
     g_brandColors = LoadBrandColors();
     g_stacked = LoadStacked();
