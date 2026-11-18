@@ -6,7 +6,59 @@
 // Reply: [09][04][status=0]...[6=percent][7=charging]. No reply checksum rule is established.
 #include "drivers.h"
 
+
+// DAREU Togran protocol on receiver 260D:1131 (A980 Pro, verified on hardware), read from DAREU's own driver
+// feature report 0A (65 bytes) on the consumer-control collection: [0A][slot<<4][len][class][cmd], reply echoes class/cmd
+// slot 0 class 00/A0 lists paired mice, slot n class 07/80 gives [7]=status [8]=level [9]=max, status 1 = charging
+static bool TogranQuery(HidDev& dev, BYTE slot, BYTE len, BYTE cls, BYTE cmd, std::vector<BYTE>& r) {
+    std::vector<BYTE> req(65, 0);
+    req[0] = 0x0A;
+    req[1] = (BYTE)(slot << 4);
+    req[2] = len;
+    req[3] = cls;
+    req[4] = cmd;
+    if (!dev.SetFeature(req)) return false;
+    for (int tries = 0; tries < 15; tries++) {
+        Sleep(30);
+        if (!dev.GetFeature(0x0A, r) || r.size() < 11) return false;
+        if ((r[1] & 0x0F) == 2 && r[3] == cls && r[4] == cmd) return true;
+    }
+    return false;
+}
+
+static void PollDareuTogran(PollContext& ctx) {
+    const USHORT vid = 0x260D, pid = 0x1131;
+    if (ctx.IsClaimed(vid, pid)) return;
+    auto colls = ctx.Find(vid, pid, [](const HidColl& c) {
+        return c.page() == 0x000C && c.usage() == 1 && c.featLen() == 65;
+    });
+    if (colls.size() != 1) return;
+    HidDev dev;
+    if (!dev.OpenFeatureOnly(*colls[0])) return;
+    std::vector<BYTE> r;
+    if (!TogranQuery(dev, 0, 6, 0x00, 0xA0, r)) return;
+    int count = r[7];
+    for (int slot = 1; slot <= count && slot <= 5; slot++) {
+        BYTE status = r[7 + (slot - 1) * 3 + 1];
+        USHORT mousePid = (USHORT)((r[7 + (slot - 1) * 3 + 2] << 8) | r[7 + (slot - 1) * 3 + 3]);
+        if (!status) continue;
+        std::vector<BYTE> b;
+        if (!TogranQuery(dev, (BYTE)slot, 4, 0x07, 0x80, b)) continue;
+        BYTE maxLevel = b[9] ? b[9] : 100;
+        if (b[8] > maxLevel) continue;
+        DeviceStatus s;
+        s.key = L"dareu:" + Hex4(vid) + L":" + Hex4(pid) + L":" + Hex4(mousePid);
+        s.name = mousePid == 0x1148 ? L"DAREU A980 Pro" : L"DAREU " + Hex4(mousePid);
+        s.kind = DeviceKind::Mouse;
+        s.via = L"2.4 GHz receiver";
+        s.percent = (int)b[8] * 100 / maxLevel;
+        s.charging = b[7] == 1;
+        ctx.Add(s, vid, pid);
+    }
+}
+
 void PollDareu(PollContext& ctx) {
+    PollDareuTogran(ctx);
     const USHORT vid = 0x260D;
     // Prefer a valid cable reading over potentially cached receiver telemetry.
     for (USHORT pid : { USHORT(0x1090), USHORT(0x1074) }) {
