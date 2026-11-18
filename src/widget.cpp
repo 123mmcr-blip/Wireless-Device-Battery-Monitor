@@ -657,7 +657,7 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
         WNDCLASSEXW wc{ sizeof(wc) };
         wc.lpfnWndProc = WidgetProc;
         wc.hInstance = inst;
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         wc.lpszClassName = kClass;
         registered = RegisterClassExW(&wc) != 0;
     }
