@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "devices.h"
+#include "battery_history.h"
 #include "i18n.h"
 #include "labels.h"
 #include "report.h"
@@ -37,7 +38,7 @@ enum MenuId : UINT {
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
 };
-enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_STRIDE = 4 };
+enum DeviceCmd : UINT { DEV_TOGGLE, DEV_LEFT, DEV_RIGHT, DEV_HISTORY, DEV_STRIDE = 4 };
 
 const wchar_t* kAppName = L"Wireless Battery";
 const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -492,6 +493,8 @@ void OnResults(std::vector<DeviceStatus>& results) {
         if (s.percent >= 0) e.lastPct = s.percent;
         e.lastSeen = GetTickCount64();
         seen[s.key] = true;
+        if (s.connected && !s.asleep && s.percent >= 0)
+            battery_history::Observe(s.key, s.percent, s.charging);
         ApplyEntry(e);
     }
     for (auto it = g_entries.begin(); it != g_entries.end();) {
@@ -636,6 +639,8 @@ void ShowMenu() {
         AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(sub, MF_STRING | (canLeft ? 0 : MF_GRAYED), base + DEV_LEFT, g_wantWidget ? T(L"Move left") : T(L"Move up"));
         AppendMenuW(sub, MF_STRING | (canRight ? 0 : MF_GRAYED), base + DEV_RIGHT, g_wantWidget ? T(L"Move right") : T(L"Move down"));
+        AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(sub, MF_STRING, base + DEV_HISTORY, T(L"Battery history..."));
         std::wstring line = e->st.name + L":  " + StatusText(*e) + L"   [" + T(e->st.via) + L"]";
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         keys.push_back(k);
@@ -729,6 +734,12 @@ void ShowMenu() {
                     case DEV_TOGGLE: ToggleHidden(key); break;
                     case DEV_LEFT:   MoveEntry(key, -1); break;
                     case DEV_RIGHT:  MoveEntry(key, +1); break;
+                    case DEV_HISTORY: {
+                        auto it = g_entries.find(key);
+                        if (it != g_entries.end())
+                            battery_history::Show(g_hwnd, key, it->second.st.name);
+                        break;
+                    }
                 }
             }
     }
@@ -968,6 +979,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     widget::SetMonitorChoice(g_widgetMonitor);
     LoadHidden();
     LoadOrder();
+    battery_history::Initialize(g_demo);
     Reconcile();
     UpdatePlaceholder();  // something to click on until the first poll finishes
     SetTimer(g_hwnd, TIMER_WIDGET, 1000, nullptr);
