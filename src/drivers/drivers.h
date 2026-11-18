@@ -91,6 +91,7 @@ void PollWlmouse(PollContext& ctx);   // WLMouse Beast X family and Beast G (VID
 void PollFinalmouse(PollContext& ctx);  // Finalmouse UltralightX / Starlight X dongles (VID 361D), read-only GETs
 void PollNinjutso(PollContext& ctx);  // Sora V2 (1915:AE1C 1K receiver, AE11 cable) and Ten / Ten Air (093A:EB01 / 093A:E020)
 void PollSprime(PollContext& ctx);    // Sprime PM1 (1915:AC1C / AD8C receivers, AC11-AC13 cable)
+void PollRawm(PollContext& ctx);      // RAWM mice (Leviathan V4, ES21, ...) and SADES Dagger (1915:23xx, RAWM HUB protocol)
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
 void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle (AJAZZ AK820 MAX, AK980 V2, AULA F108 Pro)
