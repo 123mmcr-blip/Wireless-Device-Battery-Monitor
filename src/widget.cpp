@@ -1,6 +1,7 @@
 #include "widget.h"
 
 #include "i18n.h"
+#include "taskbar_layout.h"
 
 #include <commctrl.h>
 #include <uiautomation.h>
@@ -65,11 +66,12 @@ HWND g_wbRectBar;            // taskbar g_wbRect was found in (guarded by g_wbLo
 HWND g_wbTaskbar;            // taskbar to search, null while there is no widget (guarded by g_wbLock)
 HANDLE g_wbWake;             // auto-reset: wakes the lookup thread early
 
-// Where a Windows 11 secondary taskbar's clock and task buttons are. Its XAML has no child windows for
+// Where a Windows 11 taskbar's clock, weather and task buttons are. Its XAML has no child windows for
 // them, so the same lookup thread reads them with UI Automation (the clock has AutomationId
 // "SystemTrayIcon", task buttons class "Taskbar.TaskListButtonAutomationPeer"; found by PR #107).
 struct Span {
     HWND bar = nullptr;
+    RECT widgets{};         // this taskbar's weather button (screen coordinates)
     bool measured = false;   // UI Automation answered for this taskbar
     bool hasClock = false;   // the clock can be turned off on secondary taskbars
     int clockLeft = 0;       // screen x
@@ -132,6 +134,15 @@ Span MeasureSpan(IUIAutomation* uia, HWND bar) {
         if (all) all->Release();
         task->Release();
     }
+    if (IUIAutomationCondition* widgets = StringCondition(uia, UIA_AutomationIdPropertyId, L"WidgetsButton")) {
+        IUIAutomationElement* el = nullptr;
+        if (SUCCEEDED(root->FindFirst(TreeScope_Descendants, widgets, &el)) && el) {
+            RECT r{};
+            if (SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r)) s.widgets = r;
+            el->Release();
+        }
+        widgets->Release();
+    }
     root->Release();
     return s;
 }
@@ -180,6 +191,7 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
         bool mirrors = g_wbMirrors;
         ReleaseSRWLockShared(&g_wbLock);
         std::vector<Span> spans;
+        if (bar && uia && IsXamlTaskbar(bar)) spans.push_back(MeasureSpan(uia, bar));
         if (bar && mirrors && uia)
             for (HWND t = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); t;
                  t = FindWindowExW(nullptr, t, L"Shell_SecondaryTrayWnd", nullptr))
@@ -215,6 +227,49 @@ RECT WidgetsButtonRect() {
     RECT r = g_wbRectBar && g_wbRectBar == g_wbTaskbar ? g_wbRect : RECT{};
     ReleaseSRWLockShared(&g_wbLock);
     return r;
+}
+
+struct OccupiedWindows {
+    RECT bar;
+    DWORD shellPid;
+    std::vector<RECT> rects;
+};
+
+BOOL CALLBACK CollectOccupiedWindow(HWND wnd, LPARAM data) {
+    auto& occupied = *reinterpret_cast<OccupiedWindows*>(data);
+    DWORD pid = 0;
+    GetWindowThreadProcessId(wnd, &pid);
+    if (!pid || pid == GetCurrentProcessId() || pid == occupied.shellPid || !IsWindowVisible(wnd)) return TRUE;
+    RECT r{};
+    // shortcut: overlays extending outside the taskbar are ignored, add explicit detection if needed.
+    if (GetWindowRect(wnd, &r) && r.right > r.left && r.bottom > r.top &&
+        r.left >= occupied.bar.left && r.right <= occupied.bar.right &&
+        r.top >= occupied.bar.top && r.bottom <= occupied.bar.bottom)
+        occupied.rects.push_back(r);
+    return TRUE;
+}
+
+// Shared by primary and secondary taskbars; UI Automation stays on the worker thread.
+int FreeStripLeft(HWND taskbar, const RECT& bar, int left, int width, bool rtl = false) {
+    OccupiedWindows occupied{bar, 0, {}};
+    GetWindowThreadProcessId(taskbar, &occupied.shellPid);
+    EnumChildWindows(taskbar, CollectOccupiedWindow, reinterpret_cast<LPARAM>(&occupied));
+    EnumWindows(CollectOccupiedWindow, reinterpret_cast<LPARAM>(&occupied));
+    int minLeft = bar.left;
+    AcquireSRWLockShared(&g_wbLock);
+    for (const auto& s : g_spans) {
+        if (s.bar != taskbar || !s.measured) continue;
+        if (s.widgets.right > s.widgets.left && s.widgets.top < bar.bottom && s.widgets.bottom > bar.top)
+            occupied.rects.push_back(s.widgets);
+        if (s.hasTasks && !rtl) minLeft = s.tasksRight + Px(4);
+    }
+    ReleaseSRWLockShared(&g_wbLock);
+    for (const wchar_t* cls : { L"ShellFeedsTaskbarViewWindow", L"DynamicContent2" }) {
+        HWND feeds = FindWindowExW(taskbar, nullptr, cls, nullptr);
+        RECT r{};
+        if (feeds && IsWindowVisible(feeds) && GetWindowRect(feeds, &r)) occupied.rects.push_back(r);
+    }
+    return TaskbarFreeLeft(left, width, minLeft, bar.right, Px(2), occupied.rects, rtl);
 }
 
 void ApplyTipTheme() {
@@ -613,7 +668,7 @@ void PositionMirror(Mirror& m) {
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset", RRF_RT_REG_DWORD, nullptr, &offset, &sz) ==
         ERROR_SUCCESS)
         right -= Px((int)offset);
-    int left = right - m.size.cx - Px(2);
+    int left = FreeStripLeft(m.bar, bar, right - m.size.cx - Px(2), m.size.cx);
     g_dpiBar = nullptr;
     if (!known || m.size.cx <= 0 || left < minLeft) { HideMirror(m); return; }
     POINT p{ left, bar.top };
@@ -844,7 +899,6 @@ bool Create(HINSTANCE inst, HWND notifyWnd, UINT clickMsg, bool lightTheme) {
     Paint();
     g_lastW = -1;
     Reposition();
-    if (!g_primaryHidden) ShowWindow(g_wnd, SW_SHOWNOACTIVATE);  // hidden when only another monitor is chosen
     return true;
 }
 
@@ -999,6 +1053,19 @@ bool Reposition() {
                      RRF_RT_REG_DWORD, nullptr, &customOffset, &sz) == ERROR_SUCCESS) {
         left -= Px((int)customOffset);
     }
+
+    // Check after applying the custom offset so it cannot move us onto another widget.
+    POINT screen{ left, 0 };
+    ClientToScreen(g_taskbar, &screen);
+    int freeLeft = FreeStripLeft(g_taskbar, bar, rtl ? screen.x - g_size.cx : screen.x, g_size.cx, rtl);
+    if (freeLeft == INT_MIN) {
+        ShowWindow(g_wnd, SW_HIDE);
+        g_lastW = -1;
+        return true;
+    }
+    screen.x = rtl ? freeLeft + g_size.cx : freeLeft;
+    ScreenToClient(g_taskbar, &screen);
+    left = screen.x;
 
     // Windows 10: Explorer re-expands the task buttons on its own layout passes; narrow them again.
     if (g_rebar && IsWindow(g_rebar)) {
