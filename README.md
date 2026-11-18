@@ -291,6 +291,8 @@ Refresh now = Aggiorna ora
 
 ## Credits
 
+App icon by [nik-txt](https://github.com/nik-txt) ([`res/app.svg`](res/app.svg)).
+
 The protocols come from these projects' research:
 
 - [HeadsetControl Astro drivers](https://github.com/Sapd/HeadsetControl/blob/master/lib/devices/logitech_astro_a50.hpp), [eh-fifty](https://github.com/tdryer/eh-fifty), and [AstroBar](https://github.com/nichtlegacy/AstroBar): Astro A50 X / Gen 5 / Gen 4 / Gen 3 / A20 battery protocols

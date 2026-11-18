@@ -569,10 +569,41 @@ void CopyToClipboard(const std::wstring& text) {
     CloseClipboard();
 }
 
+bool LightTheme(const wchar_t* value) {
+    DWORD v = 1, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", value,
+                 RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return v != 0;
+}
+
+// Title bar follows the Windows app theme, with the matching icon: white (icon 1) on dark, black (icon 2) on
+// light. The taskbar button's icon follows the taskbar's own theme.
+void ApplyTheme(HWND h) {
+    bool lightApps = LightTheme(L"AppsUseLightTheme"), lightTaskbar = LightTheme(L"SystemUsesLightTheme");
+    using SetAttrFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+    if (HMODULE dwm = LoadLibraryW(L"dwmapi.dll")) {
+        if (auto fn = (SetAttrFn)GetProcAddress(dwm, "DwmSetWindowAttribute")) {
+            BOOL dark = !lightApps;
+            fn(h, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark, sizeof(dark));
+        }
+    }
+    HINSTANCE inst = GetModuleHandleW(nullptr);
+    auto icon = [&](bool light, int cx, int cy) {
+        return (LPARAM)LoadImageW(inst, MAKEINTRESOURCEW(light ? 2 : 1), IMAGE_ICON, GetSystemMetrics(cx),
+                                  GetSystemMetrics(cy), LR_SHARED);
+    };
+    SendMessageW(h, WM_SETICON, ICON_SMALL, icon(lightApps, SM_CXSMICON, SM_CYSMICON));
+    SendMessageW(h, WM_SETICON, ICON_BIG, icon(lightTaskbar, SM_CXICON, SM_CYICON));
+}
+
 LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+        case WM_SETTINGCHANGE:
+            if (lp && !lstrcmpW((LPCWSTR)lp, L"ImmersiveColorSet")) ApplyTheme(h);
+            break;
         case WM_CREATE:
             g_wnd = h;
+            ApplyTheme(h);
             CreateControls();
             StartThread(ScanThread, h);
             return 0;
