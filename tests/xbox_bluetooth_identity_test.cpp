@@ -57,6 +57,14 @@ int main() {
     assert(AddIfDistinct(out, jbl));
     assert(out.size() == 3);
 
+    // A vendor driver that reports over Bluetooth itself (Galaxy Buds) still hides
+    // Windows' entry with the same name.
+    std::vector<DeviceStatus> buds;
+    DeviceStatus budsDriver = Bt(L"x", L"Galaxy Buds3 Pro", 70);
+    budsDriver.key = L"galaxybuds:x";
+    buds.push_back(budsDriver);
+    assert(!AddIfDistinct(buds, Bt(L"{CCCCCCCC-1111-2222-3333-444444444444}", L"Galaxy Buds3 Pro", 70)));
+
     // Preserve the existing guard for vendor drivers that already reported
     // a device by name, e.g. when no matching HID container can be obtained.
     std::vector<DeviceStatus> vendor;
