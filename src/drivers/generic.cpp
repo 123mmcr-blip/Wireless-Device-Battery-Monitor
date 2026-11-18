@@ -4,6 +4,7 @@
 //  * Bluetooth devices: Windows keeps the level it reads over HFP (classic) or the GATT Battery
 //    Service (LE) in a device property, the same value Settings > Bluetooth & devices shows.
 #include "drivers.h"
+#include "bluetooth_identity.h"
 
 #include <setupapi.h>
 #include <cfgmgr32.h>
@@ -275,10 +276,10 @@ void PollBluetooth(PollContext& ctx) {
         auto it = containerName.find(cid);
         s.name = (it != containerName.end() && !it->second.empty()) ? it->second : f.name;
         if (s.name.empty()) s.name = L"Bluetooth device";
-        // Skip devices a vendor driver already reported over HID++ / Bragi on the same link.
-        bool dup = false;
-        for (auto& o : ctx.out) dup |= o.name == s.name;
-        if (dup) continue;
+        // Bluetooth entries use the Windows container ID (s.key), never the display name.
+        // Two Xbox controllers may both be named "Xbox Wireless Controller".
+        // Preserve the name fallback for devices already reported by non-Bluetooth drivers.
+        if (IsDuplicateBluetoothDevice(s, ctx.out)) continue;
         s.via = L"Bluetooth";
         s.percent = f.pct;
         auto cod = containerCod.find(cid);
