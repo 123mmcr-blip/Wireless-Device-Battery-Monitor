@@ -85,6 +85,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollNiceboy(ctx);    // exact 248A:FA02 match, also before the Ajazz / Delux pollers
     PollMchoseModern(ctx);
     PollMchoseHeadset(ctx);
+    PollMchoseKeyboard(ctx);  // 3837:3033 receiver, before the generic fallbacks
     PollMiscMice(ctx);
     PollFantech(ctx);
     PollRazerHeadsets(ctx);  // before the generic Razer driver, which shares the vendor id
