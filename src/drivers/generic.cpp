@@ -16,6 +16,19 @@
 
 namespace {
 
+constexpr bool MergeConnectedState(bool previous, bool current) {
+    return previous || current;
+}
+
+static_assert(!MergeConnectedState(false, false));
+static_assert(MergeConnectedState(false, true));
+static_assert(MergeConnectedState(true, false));
+static_assert(MergeConnectedState(true, true));
+
+// Enumeration order must not change the result.
+static_assert(MergeConnectedState(MergeConnectedState(false, true), false));
+static_assert(MergeConnectedState(MergeConnectedState(false, false), true));
+
 bool IsBatteryUsage(USHORT page, USAGE usage) {
     return (page == 0x06 && usage == 0x20) || (page == 0x85 && usage == 0x65);
 }
@@ -202,8 +215,11 @@ void PollBluetooth(PollContext& ctx) {
             if (!cat.empty()) containerCat[cid] = cat;
             DEVPROP_BOOLEAN conn;
             if (SetupDiGetDevicePropertyW(di, &dd, &kIsConnected, &t, (PBYTE)&conn, sizeof(conn), nullptr, 0) &&
-                t == DEVPROP_TYPE_BOOLEAN)
-                containerConn[cid] = conn != DEVPROP_FALSE;
+                t == DEVPROP_TYPE_BOOLEAN) {
+                // Classic and LE nodes can share one container. Keep it connected when
+                // either transport is active, regardless of device enumeration order.
+                containerConn[cid] = MergeConnectedState(containerConn[cid], conn != DEVPROP_FALSE);
+            }
         }
 
         BYTE pct = 0;
