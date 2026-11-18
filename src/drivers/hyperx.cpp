@@ -207,9 +207,10 @@ bool Cloud3S(const HidColl& c, DeviceStatus& s) {
 // SetFeature(command), wait 20 ms, GetFeature(FF):
 //   connection: reply [11] == 1 means the headset is on.
 //   battery:    reply [9] = 03 discharging / 05 charging / 06 full, [11..12] = battery mV (little endian).
-// The PlayStation receivers (03F0:0A93, 0951:1713) can first hand back the previous report (FF 01 00 ...);
+// The PlayStation receivers (03F0:0A93, 0951:1713) and DTS receiver (03F0:0A8E) can hand back a previous report;
 // their battery reply is FF 12 05, so on them the reply is read again (up to 10 x 20 ms) until it looks right.
 // 0951:1713 (Kingston PlayStation receiver, same MI_03 layout as 0A93) was verified on hardware.
+// DTS 03F0:0A8E: battery/charging verified on Windows; same FF 12 05 reply (HyperBatteryMonitor PR #16).
 bool StingerCore(const HidColl& c, DeviceStatus& s) {
     static const std::vector<BYTE> kConnection = { 0xFF, 0x07, 0x00, 0xFD, 0x04, 0x00, 0x00, 0x02, 0x82, 0x03,
                                                    0x05, 0x29, 0x0F, 0x00, 0x00, 0x03, 0x68, 0x10, 0x00, 0x00 };
@@ -221,13 +222,13 @@ bool StingerCore(const HidColl& c, DeviceStatus& s) {
 
     HidDev d;
     if (!d.Open(c)) return false;
-    const bool ps = c.pid == 0x0A93 || c.pid == 0x1713;
+    const bool validateResponse = c.pid == 0x0A93 || c.pid == 0x1713 || c.pid == 0x0A8E;
     auto exchange = [&](const std::vector<BYTE>& cmd, std::vector<BYTE>& r, bool (*good)(const std::vector<BYTE>&)) {
         if (!d.SetFeature(cmd)) return false;
-        for (int i = 0; i < (ps ? 10 : 1); i++) {
+        for (int i = 0; i < (validateResponse ? 10 : 1); i++) {
             Sleep(20);
             if (!d.GetFeature(0xFF, r) || r.size() < 13) return false;
-            if (!ps || good(r)) return true;
+            if (!validateResponse || good(r)) return true;
         }
         return false;
     };
@@ -236,8 +237,8 @@ bool StingerCore(const HidColl& c, DeviceStatus& s) {
 
     std::vector<BYTE> r;
     // The connection reply's header isn't documented, so after 10 stale-looking reads the last one is used.
-    if (!exchange(kConnection, r, fresh) && !(ps && r.size() >= 13 && !fresh(r))) return false;
-    s = Base(c.pid, L"HyperX Cloud Stinger Core Wireless");
+    if (!exchange(kConnection, r, fresh) && !(validateResponse && r.size() >= 13 && !fresh(r))) return false;
+    s = Base(c.pid, c.pid == 0x0A8E ? L"HyperX Cloud Stinger Core Wireless DTS" : L"HyperX Cloud Stinger Core Wireless");
     s.connected = r[11] == 0x01;
     if (!s.connected || !exchange(kBattery, r, battery)) return true;
     BYTE code = r[9];
@@ -270,8 +271,8 @@ const Model kModels[] = {
     { 0x03F0, { 0x0AB5, 0x0D97, 0x0F98 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 2 && c.inLen() >= 8; }, HasteWireless },
     { 0x0951, { 0x16C4, 0x1723, 0x1749 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },
     { 0x03F0, { 0x0E90 }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudFlight },  // Cloud Flight (HP)
-    // Cloud Stinger Core Wireless: PlayStation receivers (HP 0A93, Kingston 1713) and the original Kingston receiver.
-    { 0x03F0, { 0x0A93 }, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 32; }, StingerCore },
+    // Cloud Stinger Core Wireless: PlayStation (HP 0A93, Kingston 1713), HP DTS 0A8E, and original Kingston.
+    { 0x03F0, { 0x0A93, 0x0A8E }, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 32; }, StingerCore },
     { 0x0951, { 0x170B, 0x1713 }, [](const HidColl& c) { return c.page() == 0xFF00 && c.usage() == 0x0001 && c.featLen() >= 32; }, StingerCore },
 };
 
