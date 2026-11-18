@@ -45,6 +45,27 @@ Battery levels of your wireless mouse, headset, keyboard and controller, right o
 
 Hover for details. Click for the menu: every device (click one to hide or show it), display mode, *Refresh now*, *Start with Windows*, and *Exit*. Levels refresh every 60 seconds, and right away when a device is plugged in or the PC wakes up.
 
+## Smart Battery Alerts (experimental)
+
+You can set a **per-device low-battery notification threshold** from each device's
+submenu: **Battery alerts** → *Use default (15%)*, *Disable notifications*,
+or one of 5%, 10%, 15%, 20%, 25%, 30%, 35%, 40%. The existing 15% default stays
+unchanged unless you choose an override. Settings are stored by device key in
+the current user's Windows registry (`Software\WirelessBattery`, `AlertThresholds`).
+
+An alert is triggered only from a real, fresh 0–100% battery reading when the
+device is connected, awake and not charging. An alert is issued once, and will
+re-arm after the level climbs more than 10 percentage points above the chosen
+threshold (or when charging begins). Missing readings or sleeping devices do
+not retrigger alerts. Hidden devices don't produce notifications. Disabling
+notifications for one device does not hide it or change its percentage.
+
+Both taskbar-widget and tray-icon modes support notifications. Since Windows
+needs a notification-area icon to display a legacy balloon, widget mode may
+show a temporary notification icon for up to one minute after an alert.
+Widget colours and the low-battery highlight still use the project's
+original global 15% threshold, independently of the notification setting.
+
 ## Supported devices
 
 | Vendor | Devices | How |
