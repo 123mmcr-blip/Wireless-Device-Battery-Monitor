@@ -42,6 +42,8 @@ test:
 	./build/ninjutso_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/cherry_driver_test.cpp src/drivers/cherry.cpp -o build/cherry_driver_test.exe
 	./build/cherry_driver_test.exe
+	$(CXX) $(CXXFLAGS) tests/cherry_xtrfy_driver_test.cpp src/drivers/cherry.cpp -o build/cherry_xtrfy_driver_test.exe
+	./build/cherry_xtrfy_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/ninjutso_cable_test.cpp src/drivers/ninjutso.cpp -o build/ninjutso_cable_test.exe
 	./build/ninjutso_cable_test.exe
 	$(CXX) $(CXXFLAGS) tests/machenike_driver_test.cpp src/drivers/machenike.cpp -o build/machenike_driver_test.exe
