@@ -16,9 +16,14 @@ build/%.o: src/%.cpp $(wildcard src/*.h src/drivers/*.h)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -municode -c $< -o $@
 
-build/app_res.o: res/app.rc res/app.manifest res/app.ico
+# Every lang/*.txt is a built-in UI language: joined into one resource, each after an "@file <name>" line.
+build/languages.txt: $(wildcard lang/*.txt)
 	@mkdir -p build
-	$(WINDRES) -i $< -o $@ --include-dir res
+	@printf '' > $@; for f in $^; do printf '@file %s\n' "$$(basename $$f .txt)" >> $@; cat "$$f" >> $@; printf '\n' >> $@; done
+
+build/app_res.o: res/app.rc res/app.manifest res/app.ico build/languages.txt
+	@mkdir -p build
+	$(WINDRES) -i $< -o $@ --include-dir res --include-dir build
 
 clean:
 	rm -rf build WirelessBattery.exe

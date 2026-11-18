@@ -1,5 +1,7 @@
 #include "widget.h"
 
+#include "i18n.h"
+
 #include <commctrl.h>
 #include <uiautomation.h>
 #include <algorithm>
@@ -681,15 +683,15 @@ std::wstring MonitorLabel(HWND bar) {
     MONITORINFOEXW mi{}, pm{};
     mi.cbSize = pm.cbSize = sizeof(MONITORINFOEXW);
     HMONITOR mon = MonitorFromWindow(bar, MONITOR_DEFAULTTONEAREST);
-    if (!GetMonitorInfoW(mon, &mi)) return L"Other monitor";
+    if (!GetMonitorInfoW(mon, &mi)) return T(L"Other monitor");
     std::wstring dev = mi.szDevice;
     size_t d = dev.find(L"DISPLAY");
-    std::wstring label = d != std::wstring::npos ? L"Display " + dev.substr(d + 7) : L"Other monitor";
+    std::wstring label = d != std::wstring::npos ? TF(L"Display {number}", { { L"number", dev.substr(d + 7) } }) : T(L"Other monitor");
     POINT origin{ 0, 0 };
     if (GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm)) {
         int dx = (mi.rcMonitor.left + mi.rcMonitor.right - pm.rcMonitor.left - pm.rcMonitor.right) / 2;
         int dy = (mi.rcMonitor.top + mi.rcMonitor.bottom - pm.rcMonitor.top - pm.rcMonitor.bottom) / 2;
-        label += abs(dx) >= abs(dy) ? (dx < 0 ? L" (left)" : L" (right)") : (dy < 0 ? L" (above)" : L" (below)");
+        label += std::wstring(L" (") + T(abs(dx) >= abs(dy) ? (dx < 0 ? L"left" : L"right") : (dy < 0 ? L"above" : L"below")) + L")";
     }
     return label;
 }
