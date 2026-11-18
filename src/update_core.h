@@ -17,7 +17,14 @@ struct ReleaseInfo {
     Version version;
     std::string tag, page, download, sha256;
     std::uint64_t size = 0;
-    bool CanInstall() const { return !download.empty() && sha256.size() == 64 && size > 0 && size <= MaxDownloadBytes; }
+    // SHA256SUMS.txt and its maintainer signature (see update_signature.h); both are required.
+    std::string sumsUrl, signatureUrl;
+    std::uint64_t sumsSize = 0, signatureSize = 0;
+    bool CanInstall() const {
+        return !download.empty() && sha256.size() == 64 && size > 0 && size <= MaxDownloadBytes &&
+               !sumsUrl.empty() && sumsSize > 0 && sumsSize <= 64 * 1024 &&
+               !signatureUrl.empty() && signatureSize > 0 && signatureSize <= 1024;
+    }
 };
 enum class ReleaseResult { Invalid, NoUpdate, Available };
 ReleaseResult ParseRelease(const std::string& json, const Version& current, ReleaseInfo& out);

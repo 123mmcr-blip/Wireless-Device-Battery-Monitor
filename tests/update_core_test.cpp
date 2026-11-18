@@ -17,6 +17,14 @@ std::string Asset() {
         "/releases/download/v1.0.10/WirelessBattery-Setup-1.0.10.exe\"}";
 }
 
+// The signed checksum list and its signature, both required for an install.
+std::string SignedAssets(const std::string& tag = "v1.0.10") {
+    std::string base = std::string("https://github.com/") + Repository + "/releases/download/" + tag + "/";
+    return std::string(",{\"name\":\"SHA256SUMS.txt\",\"state\":\"uploaded\",\"size\":200,\"browser_download_url\":\"") +
+           base + "SHA256SUMS.txt\"},{\"name\":\"SHA256SUMS.txt.sig\",\"state\":\"uploaded\",\"size\":89," +
+           "\"browser_download_url\":\"" + base + "SHA256SUMS.txt.sig\"}";
+}
+
 std::string Replace(std::string value, const std::string& before, const std::string& after) {
     auto p = value.find(before);
     assert(p != std::string::npos);
@@ -39,9 +47,24 @@ int main() {
     assert(!ValidDigest("sha256:" + std::string(64, 'g'), hex));
     assert(!ValidDigest(std::string(64, 'a'), hex));
     ReleaseInfo result;
-    auto valid = Release("v1.0.10", "[" + Asset() + "]");
+    auto valid = Release("v1.0.10", "[" + Asset() + SignedAssets() + "]");
     assert(ParseRelease(valid, current, result) == ReleaseResult::Available && result.CanInstall());
     assert(result.size == 42 && result.sha256 == std::string(64, 'a'));
+    assert(result.sumsSize == 200 && result.signatureSize == 89);
+    assert(result.signatureUrl == std::string("https://github.com/") + Repository + "/releases/download/v1.0.10/SHA256SUMS.txt.sig");
+    // Without the signature (not uploaded yet) or the checksum list, the update is shown but not installable.
+    assert(ParseRelease(Release("v1.0.10", "[" + Asset() + "]"), current, result) == ReleaseResult::Available && !result.CanInstall());
+    assert(ParseRelease(Replace(valid, "\"SHA256SUMS.txt.sig\",\"state\"", "\"other.sig\",\"state\""), current, result) ==
+           ReleaseResult::Available && !result.CanInstall());
+    assert(ParseRelease(Replace(valid, "\"name\":\"SHA256SUMS.txt\",", "\"name\":\"SUMS.txt\","), current, result) ==
+           ReleaseResult::Available && !result.CanInstall());
+    // Wrong URL, too big, listed twice.
+    assert(ParseRelease(Replace(valid, "/v1.0.10/SHA256SUMS.txt.sig", "/v1.0.9/SHA256SUMS.txt.sig"), current, result) ==
+           ReleaseResult::Available && !result.CanInstall());
+    assert(ParseRelease(Replace(valid, "\"size\":89", "\"size\":1025"), current, result) == ReleaseResult::Available && !result.CanInstall());
+    assert(ParseRelease(Replace(valid, "\"size\":200", "\"size\":65537"), current, result) == ReleaseResult::Available && !result.CanInstall());
+    assert(ParseRelease(Release("v1.0.10", "[" + Asset() + SignedAssets() + SignedAssets() + "]"), current, result) ==
+           ReleaseResult::Available && !result.CanInstall());
     assert(ParseRelease(Release("1.0.10"), current, result) == ReleaseResult::Available && !result.CanInstall());
     assert(ParseRelease(Release("v1.0.9"), current, result) == ReleaseResult::NoUpdate);
     assert(ParseRelease(Release("v1.0.8"), current, result) == ReleaseResult::NoUpdate);
@@ -53,11 +76,11 @@ int main() {
     assert(ParseRelease(valid + " x", current, result) == ReleaseResult::Invalid);
     for (size_t cut = 0; cut < valid.size(); ++cut)
         assert(ParseRelease(valid.substr(0, cut), current, result) == ReleaseResult::Invalid);
-    assert(ParseRelease(Release("v1.0.10", "[" + Asset() + "," + Asset() + "]"), current, result) == ReleaseResult::Available && !result.CanInstall());
+    assert(ParseRelease(Release("v1.0.10", "[" + Asset() + "," + Asset() + SignedAssets() + "]"), current, result) == ReleaseResult::Available && !result.CanInstall());
     for (auto bad : { Replace(Asset(), "42", "0"), Replace(Asset(), "42", "104857601"), Replace(Asset(), "42", "42.0"),
                       Replace(Asset(), "42", "-42"), Replace(Asset(), "42", "4.2e1"), Replace(Asset(), "uploaded", "new"),
                       Replace(Asset(), "sha256:", "md5:"), Replace(Asset(), "https://github.com/", "http://github.com/") }) {
-        assert(ParseRelease(Release("v1.0.10", "[" + bad + "]"), current, result) == ReleaseResult::Available && !result.CanInstall());
+        assert(ParseRelease(Release("v1.0.10", "[" + bad + SignedAssets() + "]"), current, result) == ReleaseResult::Available && !result.CanInstall());
     }
     assert(ParseRelease(Replace(valid, "\"digest\":\"sha256:" + std::string(64, 'a') + "\"", "\"digest\":null"), current, result) == ReleaseResult::Available && !result.CanInstall());
     assert(ParseRelease(Release("v1.0.10", "[]", ",\"note\":\"\\uD83D\\uDE00 \\u00e9\\n\""), current, result) == ReleaseResult::Available);

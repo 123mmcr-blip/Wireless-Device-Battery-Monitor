@@ -1,11 +1,13 @@
 #include "update_win.h"
 #include "app_version.h"
 #include "update_apply.h"
+#include "update_signature.h"
 #include <winhttp.h>
 #include <bcrypt.h>
 #include <shellapi.h>
 #include <commctrl.h>
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -339,28 +341,19 @@ std::wstring NewDownloadDirectory() {
     return CreateDirectoryW(directory.c_str(), nullptr) ? directory : L"";
 }
 
-Result DownloadRelease() {
-    Result out = FetchRelease(); // Never use cached download metadata for execution.
-    if (!out.success) return out;
-    out.success = false;
-    if (out.release.tag.empty()) { out.error = L"This update is no longer available. Check for updates again."; return out; }
-    if (!out.release.CanInstall()) { out.error = L"This release has no verified Windows installer. Please use Release notes to download it manually."; return out; }
-    std::wstring directory = NewDownloadDirectory();
-    if (directory.empty()) { out.error = L"Could not create a temporary download folder."; return out; }
-    std::wstring partial = directory + L"\\update-setup.part";
-    std::wstring final = directory + L"\\update-setup.exe";
-    HANDLE file = CreateFileW(partial.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+// HTTPS GET of a release file: only allowed GitHub hosts, at most 5 redirects, each followed by
+// hand so every hop is checked, and exactly `expected` bytes handed to `write`.
+bool HttpGet(std::wstring url, std::uint64_t expected, ULONGLONG deadline, bool showProgress,
+             const std::function<bool(const char*, DWORD)>& write) {
     HINTERNET session = WinHttpOpen(L"WirelessBattery/" WB_VERSION_WSTRING, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (session && !WinHttpSetTimeouts(session, 5000, 5000, 5000, 5000)) {
         WinHttpCloseHandle(session);
         session = nullptr;
     }
-    std::wstring url = Widen(out.release.download);
-    ULONGLONG deadline = GetTickCount64() + 600000;
     std::uint64_t total = 0;
     bool complete = false;
-    for (unsigned redirects = 0; session && file != INVALID_HANDLE_VALUE && !cancelled && redirects <= 5; ++redirects) {
+    for (unsigned redirects = 0; session && !cancelled && redirects <= 5; ++redirects) {
         if (!AllowedDownloadUrl(url) || GetTickCount64() >= deadline) break;
         URL_COMPONENTS parts{ sizeof(parts) };
         parts.dwHostNameLength = parts.dwUrlPathLength = parts.dwExtraInfoLength = (DWORD)-1;
@@ -382,17 +375,16 @@ Result DownloadRelease() {
             next = Header(req, WINHTTP_QUERY_LOCATION);
         } else if (sent && status == 200) {
             std::wstring length = Header(req, WINHTTP_QUERY_CONTENT_LENGTH);
-            bool validLength = length.empty() || Decimal(length) == out.release.size;
+            bool validLength = length.empty() || Decimal(length) == expected;
             char buffer[32768];
             DWORD read = 0;
             while (validLength && !cancelled && GetTickCount64() < deadline) {
                 if (!WinHttpReadData(req, buffer, sizeof(buffer), &read)) break;
-                if (!read) { complete = total == out.release.size; break; }
-                if (total + read > out.release.size || total + read > MaxDownloadBytes) break;
-                DWORD written = 0;
-                if (!WriteFile(file, buffer, read, &written, nullptr) || written != read) break;
+                if (!read) { complete = total == expected; break; }
+                if (total + read > expected || total + read > MaxDownloadBytes) break;
+                if (!write(buffer, read)) break;
                 total += read;
-                progress = (unsigned)(total * 100 / out.release.size);
+                if (showProgress) progress = (unsigned)(total * 100 / expected);
             }
         }
         if (req) WinHttpCloseHandle(req);
@@ -400,8 +392,49 @@ Result DownloadRelease() {
         if (next.empty()) break;
         url = std::move(next);
     }
-    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
     if (session) WinHttpCloseHandle(session);
+    return complete && !cancelled;
+}
+
+bool GetText(const std::string& url, std::uint64_t expected, ULONGLONG deadline, std::string& out) {
+    out.clear();
+    return HttpGet(Widen(url), expected, deadline, false, [&](const char* data, DWORD n) {
+        out.append(data, n);
+        return true;
+    });
+}
+
+Result DownloadRelease() {
+    Result out = FetchRelease(); // Never use cached download metadata for execution.
+    if (!out.success) return out;
+    out.success = false;
+    if (out.release.tag.empty()) { out.error = L"This update is no longer available. Check for updates again."; return out; }
+    if (!out.release.CanInstall()) { out.error = L"This release has no signed Windows installer yet. Please use Release notes to download it manually."; return out; }
+    ULONGLONG deadline = GetTickCount64() + 600000;
+    // First the maintainer's signature: the setup is only accepted if its hash is in a checksum list
+    // signed with a key GitHub never sees, and the same hash GitHub lists for the file.
+    std::string sums, signature, signedHash;
+    std::string setupName = "WirelessBattery-Setup-" + VersionText(out.release.version) + ".exe";
+    if (!GetText(out.release.sumsUrl, out.release.sumsSize, deadline, sums) ||
+        !GetText(out.release.signatureUrl, out.release.signatureSize, deadline, signature)) {
+        out.error = cancelled ? L"Update download cancelled." : L"Could not download the update's signature. Please try again later.";
+        return out;
+    }
+    if (!VerifyReleaseSignature(sums, signature) || !SignedHash(sums, setupName, signedHash) || signedHash != out.release.sha256) {
+        out.error = L"The update's signature is not valid, so it was not downloaded. Your current version was kept.";
+        return out;
+    }
+    std::wstring directory = NewDownloadDirectory();
+    if (directory.empty()) { out.error = L"Could not create a temporary download folder."; return out; }
+    std::wstring partial = directory + L"\\update-setup.part";
+    std::wstring final = directory + L"\\update-setup.exe";
+    HANDLE file = CreateFileW(partial.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    bool complete = file != INVALID_HANDLE_VALUE &&
+        HttpGet(Widen(out.release.download), out.release.size, deadline, true, [&](const char* data, DWORD n) {
+            DWORD written = 0;
+            return WriteFile(file, data, n, &written, nullptr) && written == n;
+        });
+    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
     if (complete && !cancelled && VerifyFile(partial, out.release.sha256, out.release.size) &&
         MoveFileW(partial.c_str(), final.c_str())) {
         out.success = true;

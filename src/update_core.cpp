@@ -245,10 +245,27 @@ ReleaseResult ParseRelease(const std::string& json, const Version& current, Rele
     if (out.page != page->text) { out = {}; return ReleaseResult::Invalid; }
     if (draft->boolean || pre->boolean || !Newer(out.version, current)) { out = {}; return ReleaseResult::NoUpdate; }
     std::string name = "WirelessBattery-Setup-" + VersionText(out.version) + ".exe";
-    unsigned matches = 0;
+    std::string base = std::string("https://github.com/") + Repository + "/releases/download/" + out.tag + "/";
+    unsigned matches = 0, sumsMatches = 0, signatureMatches = 0;
     for (const Json& asset : assets->array) {
         const Json* assetName = asset.Get("name", Json::String);
-        if (!assetName || assetName->text != name) continue;
+        if (!assetName) continue;
+        // The signed checksum list and its signature: small files at their exact release URLs.
+        for (bool signature : { false, true }) {
+            const char* file = signature ? "SHA256SUMS.txt.sig" : "SHA256SUMS.txt";
+            if (assetName->text != file) continue;
+            ++(signature ? signatureMatches : sumsMatches);
+            const Json* state = asset.Get("state", Json::String);
+            const Json* url = asset.Get("browser_download_url", Json::String);
+            const Json* size = asset.Get("size", Json::Number);
+            std::uint64_t bytes = 0;
+            if (state && state->text == "uploaded" && url && url->text == base + file && size && AssetSize(*size, bytes) &&
+                bytes <= (signature ? 1024u : 64u * 1024)) {
+                (signature ? out.signatureUrl : out.sumsUrl) = url->text;
+                (signature ? out.signatureSize : out.sumsSize) = bytes;
+            }
+        }
+        if (assetName->text != name) continue;
         ++matches;
         const Json* state = asset.Get("state", Json::String);
         const Json* url = asset.Get("browser_download_url", Json::String);
@@ -265,6 +282,8 @@ ReleaseResult ParseRelease(const std::string& json, const Version& current, Rele
         }
     }
     if (matches != 1) { out.download.clear(); out.sha256.clear(); out.size = 0; }
+    if (sumsMatches != 1) { out.sumsUrl.clear(); out.sumsSize = 0; }
+    if (signatureMatches != 1) { out.signatureUrl.clear(); out.signatureSize = 0; }
     return ReleaseResult::Available;
 }
 }

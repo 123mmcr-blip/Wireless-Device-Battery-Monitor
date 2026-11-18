@@ -34,7 +34,7 @@ build/app_res.o: res/app.rc res/app.manifest res/app.ico res/app_light.ico build
 clean:
 	rm -rf build WirelessBattery.exe
 
-test: test-update-core test-update-win
+test: test-update-core test-update-win test-update-signature
 	@mkdir -p build
 	$(CXX) -std=c++17 -O2 -Wall tests/device_aliases_test.cpp -o build/device_aliases_test.exe
 	./build/device_aliases_test.exe
@@ -94,12 +94,17 @@ test-update-core:
 	$(CXX) -std=c++17 -O2 -Wall tests/update_core_test.cpp src/update_core.cpp -o build/update_core_test.exe
 	./build/update_core_test.exe
 
+test-update-signature: build/version.h
+	@mkdir -p build
+	$(CXX) -std=c++17 -O2 -Wall tests/update_signature_test.cpp src/update_signature.cpp -o build/update_signature_test.exe -lbcrypt
+	./build/update_signature_test.exe
+
 test-update-win: build/version.h build/app_res.o
 	@mkdir -p build
-	$(CXX) -std=c++17 -O2 -Wall tests/update_win_test.cpp src/update_core.cpp build/app_res.o \
+	$(CXX) -std=c++17 -O2 -Wall tests/update_win_test.cpp src/update_core.cpp src/update_signature.cpp build/app_res.o \
 	    -o build/update_win_test.exe -lwinhttp -lbcrypt -lcomctl32 -lversion -lole32
 	./build/update_win_test.exe
 
 FORCE:
 
-.PHONY: clean test test-update-core test-update-win FORCE
+.PHONY: clean test test-update-core test-update-win test-update-signature FORCE
