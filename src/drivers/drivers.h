@@ -112,7 +112,7 @@ void PollPlayStation(PollContext& ctx);
 void PollSwitchPro(PollContext& ctx);  // Passive Switch Pro battery reports (057E:2009)
 void PollSteamController(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
-void PollFlydigi(PollContext& ctx);    // Vader 5 Pro vendor battery channel
+void PollFlydigi(PollContext& ctx);    // Vader 5 Pro / Apex 5 vendor battery channel
 void PollGameSirCyclone(PollContext& ctx);  // Cyclone 2 (XInput mode)
 void Poll8BitDo(PollContext& ctx);     // Ultimate 2 Wireless in D-input mode (2DC8:6012)
 void PollBeitong(PollContext& ctx);    // BEITONG KP20 on its 2.4 GHz receiver (20BC:5128, XInput mode)
@@ -170,7 +170,7 @@ void PollCoolerMaster(PollContext &ctx);
 void PollPlayStation(PollContext &ctx);
 void PollSteamController(PollContext &ctx);
 void PollGameSir(PollContext &ctx);        // Nova Lite / Nova 2 / Nova 2 Lite
-void PollFlydigi(PollContext &ctx);        // Vader 5 Pro vendor battery channel
+void PollFlydigi(PollContext &ctx);        // Vader 5 Pro / Apex 5 vendor battery channel
 void PollGameSirCyclone(PollContext &ctx); // Cyclone 2 (XInput mode)
 void Poll8BitDo(PollContext &ctx);         // Ultimate 2 Wireless in D-input mode (2DC8:6012)
 void PollAirPods(PollContext &ctx);        // Apple AirPods / Beats (BLE proximity broadcasts)
