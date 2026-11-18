@@ -632,6 +632,60 @@ int ListToConsole(bool dump) {
     return 0;
 }
 
+// Machine-readable device list for scripts (the Noctalia plugin in noctalia-plugin/ uses this).
+std::string JsonEscape(const std::string& s) {
+    std::string o;
+    o.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  o += "\\\""; break;
+            case '\\': o += "\\\\"; break;
+            case '\n': o += "\\n";  break;
+            case '\r': o += "\\r";  break;
+            case '\t': o += "\\t";  break;
+            default:
+                if (c < 0x20) { char b[8]; snprintf(b, sizeof b, "\\u%04x", c); o += b; }
+                else o += (char)c;
+        }
+    }
+    return o;
+}
+
+const char* KindName(DeviceKind k) {
+    switch (k) {
+        case DeviceKind::Mouse:    return "mouse";
+        case DeviceKind::Headset:  return "headset";
+        case DeviceKind::Keyboard: return "keyboard";
+        case DeviceKind::Gamepad:  return "gamepad";
+        case DeviceKind::Phone:    return "phone";
+        default:                   return "other";
+    }
+}
+
+int ListJson() {
+    auto list = PollAllDevices();
+    std::string out = "[";
+    bool first = true;
+    for (const auto& s : list) {
+        if (!first) out += ',';
+        first = false;
+        out += "{\"key\":\"" + JsonEscape(WideToUtf8(s.key)) + "\""
+               ",\"name\":\"" + JsonEscape(WideToUtf8(s.name)) + "\""
+               ",\"via\":\"" + JsonEscape(WideToUtf8(s.via)) + "\""
+               ",\"kind\":\"" + KindName(s.kind) + "\""
+               ",\"percent\":" + std::to_string(s.percent) +
+               ",\"level\":\"" + JsonEscape(WideToUtf8(s.levelText)) + "\""
+               ",\"detail\":\"" + JsonEscape(WideToUtf8(s.detail)) + "\""
+               ",\"charging\":" + (s.charging ? "true" : "false") +
+               ",\"asleep\":" + (s.asleep ? "true" : "false") +
+               ",\"connected\":" + (s.connected ? "true" : "false") +
+               ",\"millivolts\":" + std::to_string(s.millivolts) + "}";
+    }
+    out += "]\n";
+    fwrite(out.data(), 1, out.size(), stdout);
+    return 0;
+}
+
 int QuitRunning() {
     GError* error = nullptr;
     GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -650,6 +704,7 @@ int QuitRunning() {
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--list")) return ListToConsole(false);
+        if (!strcmp(argv[i], "--json")) return ListJson();
         if (!strcmp(argv[i], "--dump")) return ListToConsole(true);
         if (!strcmp(argv[i], "--quit")) return QuitRunning();
     }
