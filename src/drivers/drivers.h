@@ -102,6 +102,7 @@ void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds
 void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle (AJAZZ AK820 MAX / AK820 Pro, AK980 V2, AULA F108 Pro)
 void PollViaDongle(PollContext& ctx);  // 36B0:3002 dongle (PMO Hub or VIA firmware) and PMO Hub keyboards on their cable (Wave 75, Aurora 80, P75, PMO 80)
 void PollSemico(PollContext& ctx);    // Semico 1A2C keyboards (Attack Shark X98, AJAZZ AK820 Max Plus) on 8FFF / A034 / A036
+void PollAjazzAk992(PollContext& ctx); // AJAZZ AK992 on the Telink 2.4 GHz receiver
 void PollFractal(PollContext& ctx);   // Fractal Design Scape headset (dongle or cable)
 void PollJabra(PollContext& ctx);     // Jabra GNP headsets, on USB or behind a Link dongle
 void PollJbl(PollContext& ctx);       // JBL Quantum wireless headsets (HIDV1 and HIDV3)
