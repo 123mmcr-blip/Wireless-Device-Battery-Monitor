@@ -6,6 +6,7 @@
 #include <hidclass.h>
 
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <cstdio>
 #include <cwchar>
@@ -32,7 +33,9 @@ constexpr UINT WM_WIDGET_CLICK = WM_APP + 3;
 constexpr UINT_PTR TIMER_DEBOUNCE = 1;
 constexpr UINT_PTR TIMER_WIDGET = 2;
 constexpr UINT_PTR TIMER_ALERT_ICON = 3;
-constexpr DWORD POLL_INTERVAL_MS = 60 * 1000;
+// "Check battery every" choices in seconds; 60 is the default. A poll resets an awake device's sleep timer,
+// so a device only sleeps if its timer is shorter than the interval.
+constexpr DWORD POLL_SECONDS[] = { 30, 60, 120, 300, 600, 900, 1800, 3600 };
 constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
 constexpr UINT ALERT_ICON_ID = 2;
@@ -40,6 +43,7 @@ constexpr UINT ALERT_ICON_ID = 2;
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY,
+    ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
@@ -69,6 +73,7 @@ std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all"
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
 bool g_stacked = false;      // icon above the percentage (menu option)
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
+std::atomic<DWORD> g_pollIntervalMs{ 60 * 1000 };  // set from the menu, read by the worker thread
 
 struct TrayEntry {
     UINT uid = 0;
@@ -275,6 +280,14 @@ bool LoadStacked() { return LoadBoolSetting(L"StackedLayout", false); }
 void SaveStacked(bool on) { SaveBoolSetting(L"StackedLayout", on); }
 bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
 void SaveBrandColors(bool on) { SaveBoolSetting(L"BrandColors", on); }
+DWORD LoadPollSeconds() {
+    DWORD v = 60, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"PollIntervalSeconds", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return std::clamp<DWORD>(v, 30, 24 * 60 * 60);
+}
+void SavePollSeconds(DWORD seconds) {
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"PollIntervalSeconds", REG_DWORD, &seconds, sizeof(seconds));
+}
 
 bool AutostartEnabled() {
     wchar_t buf[MAX_PATH * 2];
@@ -608,9 +621,11 @@ void OnResults(std::vector<DeviceStatus>& results) {
     }
     for (auto it = g_entries.begin(); it != g_entries.end();) {
         auto& e = it->second;
-        // Some receivers drop sleeping devices from the link; keep showing the last value for a while.
+        // Some receivers drop sleeping devices from the link; keep showing the last value for a while
+        // (at least two poll intervals).
         bool inGrace = !seen.count(it->first) && e.st.graceSec > 0 && e.st.connected &&
-                       GetTickCount64() - e.lastSeen < (ULONGLONG)e.st.graceSec * 1000;
+                       GetTickCount64() - e.lastSeen <
+                           std::max<ULONGLONG>((ULONGLONG)e.st.graceSec * 1000, 2ULL * g_pollIntervalMs);
         if (inGrace) {
             e.st.percent = -1;
             e.st.asleep = true;
@@ -714,6 +729,12 @@ void SetBrandColors(bool on) {
     SaveBrandColors(on);
     RedrawAll();
     UpdateWidget();
+}
+
+void SetPollSeconds(DWORD seconds) {
+    g_pollIntervalMs = seconds * 1000;
+    SavePollSeconds(seconds);
+    SetEvent(g_refreshEvt);  // poll now, so the new interval starts right away
 }
 
 void ToggleHidden(const std::wstring& key) {
@@ -871,6 +892,20 @@ void ShowMenu() {
         AppendMenuW(sub, MF_STRING, ID_LANG_ADD, T(L"Add your own language..."));
         AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Language"));
     }
+    {
+        HMENU sub = CreatePopupMenu();
+        const UINT count = ARRAYSIZE(POLL_SECONDS);
+        UINT checked = 0;
+        for (UINT i = 0; i < count; i++) {
+            DWORD s = POLL_SECONDS[i];
+            std::wstring label = s < 60 ? TF(L"{seconds} s", { { L"seconds", std::to_wstring(s) } })
+                                        : TF(L"{minutes} min", { { L"minutes", std::to_wstring(s / 60) } });
+            AppendMenuW(sub, MF_STRING, ID_POLL_FIRST + i, label.c_str());
+            if (s * 1000 == g_pollIntervalMs) checked = ID_POLL_FIRST + i;
+        }
+        if (checked) CheckMenuRadioItem(sub, ID_POLL_FIRST, ID_POLL_FIRST + count - 1, checked, MF_BYCOMMAND);
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Check battery every"));
+    }
     AppendMenuW(m, MF_STRING, ID_REFRESH, T(L"Refresh now"));
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), ID_AUTOSTART, T(L"Start with Windows"));
     AppendMenuW(m, MF_STRING, ID_REPORT, T(L"Request support for a device..."));
@@ -903,7 +938,9 @@ void ShowMenu() {
         case ID_REPORT: report::Show(g_inst, g_hwnd); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
         default:
-            if (cmd >= ID_LANG_FIRST && cmd < ID_LANG_FIRST + languages.size()) {
+            if (cmd >= ID_POLL_FIRST && cmd < ID_POLL_FIRST + ARRAYSIZE(POLL_SECONDS)) {
+                SetPollSeconds(POLL_SECONDS[cmd - ID_POLL_FIRST]);
+            } else if (cmd >= ID_LANG_FIRST && cmd < ID_LANG_FIRST + languages.size()) {
                 SetLanguage(languages[cmd - ID_LANG_FIRST].code);
             } else if (cmd >= ID_MONITOR_FIRST && cmd < ID_MONITOR_FIRST + monitors.size()) {
                 SetWidgetMonitor(monitors[cmd - ID_MONITOR_FIRST].id);
@@ -986,7 +1023,7 @@ DWORD WINAPI Worker(LPVOID) {
     for (;;) {
         auto* v = new std::vector<DeviceStatus>(g_demo ? DemoDevices() : PollAllDevices());
         if (!PostMessageW(g_hwnd, WM_RESULTS, 0, (LPARAM)v)) delete v;
-        DWORD delay = POLL_INTERVAL_MS;
+        DWORD delay = g_pollIntervalMs;
         if (startupPoll < ARRAYSIZE(startupPollDelays)) delay = startupPollDelays[startupPoll++];
         if (WaitForMultipleObjects(2, events, FALSE, delay) == WAIT_OBJECT_0) return 0;
     }
@@ -1176,6 +1213,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_widgetBackground = LoadWidgetBackground();
     g_brandColors = LoadBrandColors();
     g_stacked = LoadStacked();
+    g_pollIntervalMs = LoadPollSeconds() * 1000;
     widget::SetStacked(g_stacked);
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
     i18n::Init();
