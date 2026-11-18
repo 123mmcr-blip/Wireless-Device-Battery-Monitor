@@ -12,6 +12,7 @@ off / not connected =
 {percent}% (last known) = 
 unknown = 
 charging = 
+fully charged = 
 asleep = 
 No devices with battery info found = 
 Low battery = 

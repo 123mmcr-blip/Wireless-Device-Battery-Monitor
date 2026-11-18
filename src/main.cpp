@@ -440,7 +440,8 @@ std::wstring StatusText(const TrayEntry& e) {
     else if (e.lastPct >= 0) t = TF(L"{percent}% (last known)", { { L"percent", std::to_wstring(e.lastPct) } });
     else t = T(L"unknown");
     if (!s.detail.empty() && s.percent >= 0) t += L" (" + s.detail + L")";
-    if (s.charging) t += std::wstring(L", ") + T(L"charging");
+    if (s.full || (s.charging && s.percent >= 100)) t += std::wstring(L", ") + T(L"fully charged");
+    else if (s.charging) t += std::wstring(L", ") + T(L"charging");
     if (s.asleep) t += std::wstring(L", ") + T(L"asleep");
     return t;
 }
@@ -518,7 +519,8 @@ void ApplyEntry(TrayEntry& e) {
     // Never display an old percentage as a live reading for an explicitly offline device.
     int shown = !s.connected ? -1 : (s.percent >= 0 ? s.percent : e.lastPct);
     bool dim = !s.connected || s.percent < 0;
-    bool charging = s.connected && !s.asleep && s.charging;
+    // Fully charged on power: the normal green bar instead of the blue charging one.
+    bool charging = s.connected && !s.asleep && s.charging && !s.full && shown < 100;
     Accent accent = AccentFor(s);
     std::wstring sig = std::to_wstring(shown) + (charging ? L"c" : L"") + (dim ? L"d" : L"") + (g_lightTaskbar ? L"l" : L"k") +
                        L"a" + std::to_wstring((int)accent) + (s.connected ? L"|on" : L"|off");
@@ -585,6 +587,7 @@ void UpdateWidget() {
         if (offline) it.text = L"\u00D7";  // clear status, not a stale percentage
         else if (e->st.percent >= 0) it.text = T(e->st.levelText);
         it.charging = !offline && !e->st.asleep && e->st.charging;
+        it.full = !offline && (e->st.full || (e->st.charging && it.percent >= 100));
         it.dim = offline || e->st.percent < 0;
         it.low = !offline && !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
@@ -1007,7 +1010,7 @@ std::vector<DeviceStatus> DemoDevices() {
         make(L"jbl:demo", L"JBL Quantum 910", DeviceKind::Headset, 70, 0x0ECB, false),
         make(L"coolermaster:demo", L"Cooler Master MM712", DeviceKind::Mouse, 12, 0x2516, false),
         make(L"steam:demo", L"Steam Controller", DeviceKind::Gamepad, 50, 0x28DE, true),
-        make(L"bt:demo-plain", L"Bluetooth Headphones", DeviceKind::Headset, 100, 0, false),
+        make(L"bt:demo-plain", L"Bluetooth Headphones", DeviceKind::Headset, 100, 0, true),  // charging at 100%: fully charged
     };
     DeviceStatus offline = make(L"demo:offline-receiver", L"Offline wireless headset", DeviceKind::Headset, -1, 0, false);
     offline.via = L"2.4 GHz receiver";
@@ -1151,7 +1154,8 @@ int ListToConsole(bool dump) {
         else if (s.percent >= 0) line += std::to_wstring(s.percent) + L"%";
         else line += L"unknown";
         if (!s.detail.empty()) line += L" (" + s.detail + L")";
-        if (s.charging) line += L", charging";
+        if (s.full || (s.charging && s.percent >= 100)) line += L", fully charged";
+        else if (s.charging) line += L", charging";
         if (s.millivolts) line += L", " + std::to_wstring(s.millivolts) + L" mV";
         write(line + L"   (" + s.key + L")\n");
     }

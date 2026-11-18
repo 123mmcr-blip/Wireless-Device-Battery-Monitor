@@ -255,6 +255,7 @@ wchar_t Glyph(DeviceKind k, bool bluetooth) {
     }
 }
 constexpr wchar_t kBolt = 0xE945;            // LightningBolt
+constexpr wchar_t kCheck = 0xE73E;           // CheckMark, in place of the bolt once fully charged
 constexpr wchar_t kBatteryUnknown = 0xE996;  // shown when there is nothing to display
 
 // Creates a font, falling back when the preferred face is not installed (GDI would silently substitute).
@@ -400,6 +401,7 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     Rgb fg = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
     Rgb red = g_light ? Rgb{ 196, 30, 40 } : Rgb{ 255, 90, 90 };
     Rgb charge = g_light ? Rgb{ 0, 120, 212 } : Rgb{ 96, 205, 255 };
+    Rgb full = g_light ? Rgb{ 16, 124, 16 } : Rgb{ 108, 203, 95 };  // Windows "success" green
     HFONT icons = MakeFont(Px(16), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
     HFONT bolt = MakeFont(Px(11), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
     HFONT text = MakeFont(Px(13), FW_NORMAL, L"Segoe UI Variable Text", L"Segoe UI", Px(12));
@@ -413,8 +415,9 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
         const auto& it = g_items[i];
         int a = it.dim ? 120 : 255;
         Rgb tc = it.low ? red : fg;
+        bool mark = it.charging || it.full;  // bolt while charging, green check mark once full
         size_t glyph = out.size();
-        slots.push_back({ (int)glyph, (int)glyph + 1, it.charging ? (int)glyph + 2 : -1 });
+        slots.push_back({ (int)glyph, (int)glyph + 1, mark ? (int)glyph + 2 : -1 });
         bool branded = it.accent != Accent::None;
         BrandColor bc = AccentColor(it.accent, g_light);
         Rgb accent{ bc.r, bc.g, bc.b };
@@ -426,13 +429,13 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
         }
         out.push_back(std::move(icon));
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
-        Piece label{ RenderMask(t, text, g_light), tc, a, it.charging ? Px(2) : 0 };
+        Piece label{ RenderMask(t, text, g_light), tc, a, mark ? Px(2) : 0 };
         if (branded && it.percent >= 0) {
             label.barPct = it.percent;
             label.barColor = it.low ? red : accent;
         }
         out.push_back(std::move(label));
-        if (it.charging) out.push_back({ RenderMask(std::wstring(1, kBolt), bolt, g_light), charge, a, 0 });
+        if (mark) out.push_back({ RenderMask(std::wstring(1, it.full ? kCheck : kBolt), bolt, g_light), it.full ? full : charge, a, 0 });
         out.back().gapAfter = i + 1 < g_items.size() ? Px(14) : 0;
         if (!it.label.empty()) {  // tiny caption in the bottom-right corner of the icon
             Piece c{ RenderMask(it.label, caption, g_light), fg, a, 0 };
