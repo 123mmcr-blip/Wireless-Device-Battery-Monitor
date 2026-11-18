@@ -9,6 +9,12 @@
 // The firmware answers an unimplemented report id with the previous implemented one, so the reply's
 // first byte must match the id asked for (GetFeatureByte checks it). Only GETs are sent.
 //
+// Quantum 360 Wireless (0ECB:2115, same ID source; dongle listed with the HIDV1 dongle models in
+// https://github.com/Tymon3310/jbl-quantum-linux/blob/main/docs/QUANTUM_LINEUP.md). Not HIDV3: its
+// Windows dump in https://github.com/krisgfx9/Wireless-Device-Battery-Monitor/issues/183 has no FF12
+// collection, only the 350's layout of a Generic Desktop usage 0 collection (interface 5, 64-byte
+// feature = the 63-byte HIDV1 reports) next to a telephony one. Same read-only GET 68 / GET 49.
+//
 // JBL Quantum 520 / 650 / 850 / 950 (and X variants) headsets, vendor 0ECB, "HIDV3" protocol on the
 // vendor collection with usage page FF12 (64-byte reports: input 86, output 87, feature 88).
 //   request (feature 88): [88][00 DD][01 00][01][00][02 00][feature lo][feature hi]
@@ -65,6 +71,7 @@ struct Hidv1Model { USHORT pid; int iface; USHORT page; const wchar_t* name; }; 
 constexpr Hidv1Model kHidv1Models[] = {
     { 0x206B, 3, 0x0001, L"JBL Quantum 350 Wireless" },
     { 0x205C, 5, 0, L"JBL Quantum 610 Wireless" },
+    { 0x2115, 5, 0x0001, L"JBL Quantum 360 Wireless" },
 };
 
 void PollHidv1(PollContext& ctx) {
