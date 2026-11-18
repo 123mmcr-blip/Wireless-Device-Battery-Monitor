@@ -65,14 +65,17 @@ HWND g_wbRectBar;            // taskbar g_wbRect was found in (guarded by g_wbLo
 HWND g_wbTaskbar;            // taskbar to search, null while there is no widget (guarded by g_wbLock)
 HANDLE g_wbWake;             // auto-reset: wakes the lookup thread early
 
-// Where a Windows 11 secondary taskbar's clock and task buttons are. Its XAML has no child windows for
-// them, so the same lookup thread reads them with UI Automation (the clock has AutomationId
-// "SystemTrayIcon", task buttons class "Taskbar.TaskListButtonAutomationPeer"; found by PR #107).
+// Where a Windows 11 secondary taskbar's clock, widgets button and task buttons are. Its XAML has no child
+// windows for them, so the same lookup thread reads them with UI Automation (the clock has AutomationId
+// "SystemTrayIcon", widgets button "WidgetsButton", task buttons class "Taskbar.TaskListButtonAutomationPeer";
+// found by PR #107).
 struct Span {
     HWND bar = nullptr;
     bool measured = false;   // UI Automation answered for this taskbar
     bool hasClock = false;   // the clock can be turned off on secondary taskbars
     int clockLeft = 0;       // screen x
+    bool hasWidgets = false; // Widgets (weather) button on secondary taskbar
+    RECT widgets{};          // bounding rectangle of WidgetsButton (screen coords)
     bool hasTasks = false;
     int tasksRight = 0;      // right edge of the last task button left of the clock (screen x)
 };
@@ -115,6 +118,17 @@ Span MeasureSpan(IUIAutomation* uia, HWND bar) {
         if (all) all->Release();
         clock->Release();
     }
+    if (IUIAutomationCondition* wbCond = StringCondition(uia, UIA_AutomationIdPropertyId, L"WidgetsButton")) {
+        IUIAutomationElement* wbEl = nullptr;
+        RECT r{};
+        if (SUCCEEDED(root->FindFirst(TreeScope_Descendants, wbCond, &wbEl)) && wbEl &&
+            SUCCEEDED(wbEl->get_CurrentBoundingRectangle(&r)) && inBar(r)) {
+            s.widgets = r;
+            s.hasWidgets = true;
+        }
+        if (wbEl) wbEl->Release();
+        wbCond->Release();
+    }
     if (IUIAutomationCondition* task = StringCondition(uia, UIA_ClassNamePropertyId, L"Taskbar.TaskListButtonAutomationPeer")) {
         IUIAutomationElementArray* all = nullptr;
         int n = 0;
@@ -123,7 +137,8 @@ Span MeasureSpan(IUIAutomation* uia, HWND bar) {
                 IUIAutomationElement* el = nullptr;
                 RECT r{};
                 if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r) &&
-                    (!s.hasClock || r.right <= s.clockLeft) && (!s.hasTasks || r.right > s.tasksRight)) {
+                    (!s.hasClock || r.right <= s.clockLeft) && (!s.hasWidgets || r.right <= s.widgets.left) &&
+                    (!s.hasTasks || r.right > s.tasksRight)) {
                     s.tasksRight = r.right;
                     s.hasTasks = true;
                 }
@@ -586,8 +601,8 @@ void HideMirror(Mirror& m) {
     m.lastLeft = INT_MIN;
 }
 
-// Places a mirror left of its taskbar's clock, or hides it when that spot is unknown or taken by task
-// buttons: never guess and cover something.
+// Places a mirror left of its taskbar's clock (and left of the Widgets button if present), or hides it
+// when that spot is unknown or taken by task buttons: never guess and cover something.
 void PositionMirror(Mirror& m) {
     RECT bar{};
     if (!GetWindowRect(m.bar, &bar) || (GetWindowLongW(m.bar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL)) { HideMirror(m); return; }
@@ -608,12 +623,20 @@ void PositionMirror(Mirror& m) {
         HWND clock = FindWindowExW(m.bar, nullptr, L"ClockButton", nullptr);
         RECT cr{};
         right = clock && IsWindowVisible(clock) && GetWindowRect(clock, &cr) ? cr.left : bar.right - Px(8);
+        for (const wchar_t* cls : { L"ShellFeedsTaskbarViewWindow", L"DynamicContent2" }) {
+            HWND feeds = FindWindowExW(m.bar, nullptr, cls, nullptr);
+            RECT fr{};
+            if (feeds && IsWindowVisible(feeds) && GetWindowRect(feeds, &fr) && fr.left < right && fr.right > fr.left)
+                right = fr.left;
+        }
         known = true;
     } else {
         AcquireSRWLockShared(&g_wbLock);
         for (const auto& s : g_spans)
             if (s.bar == m.bar && s.measured) {
                 right = s.hasClock ? s.clockLeft : bar.right - Px(8);
+                if (s.hasWidgets && s.widgets.left < right && s.widgets.right > right - m.size.cx - Px(2))
+                    right = s.widgets.left;
                 if (s.hasTasks) minLeft = s.tasksRight + Px(4);
                 known = true;
             }
@@ -621,6 +644,9 @@ void PositionMirror(Mirror& m) {
     }
     DWORD offset = 0, sz = sizeof(offset);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"TaskbarOffset", RRF_RT_REG_DWORD, nullptr, &offset, &sz) ==
+        ERROR_SUCCESS)
+        right -= Px((int)offset);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"SecondaryTaskbarOffset", RRF_RT_REG_DWORD, nullptr, &offset, &sz) ==
         ERROR_SUCCESS)
         right -= Px((int)offset);
     int left = right - m.size.cx - Px(2);
