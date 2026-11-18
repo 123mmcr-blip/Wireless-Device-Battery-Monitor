@@ -80,6 +80,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollMchoseG3(ctx);
     PollMsi(ctx);
     PollMachenike(ctx);  // before Ajazz in PollMiscMice, which shares the L7's 248A vendor id
+    PollNiceboy(ctx);    // exact 248A:FA02 match, also before the Ajazz / Delux pollers
     PollMchoseModern(ctx);
     PollMchoseHeadset(ctx);
     PollMiscMice(ctx);
@@ -109,6 +110,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollPhoneLink(ctx);
     PollGalaxyBuds(ctx);  // before the Bluetooth fallback, which skips devices already listed by name
     PollMoondrop(ctx);
+    PollAlienware(ctx);
     PollHeadsetControl(ctx);
     PollBluetooth(ctx);   // before the generic HID check: Windows' own level wins for the same device
     PollGenericHid(ctx);

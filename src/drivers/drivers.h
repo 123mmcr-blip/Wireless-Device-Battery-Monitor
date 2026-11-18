@@ -83,6 +83,7 @@ void PollRapoo(PollContext& ctx);     // Rapoo VT gaming mice incl. VT1 Pro Max 
 void PollAreson(PollContext& ctx);    // Areson 25A7 receivers (Redragon M913 / M915)
 void PollMchose(PollContext& ctx);    // MCHOSE mice (L7 / M7 / A7 / K7 families, VID 5253)
 void PollMachenike(PollContext& ctx); // Machenike L7 Arctic / L7 Mix, receiver 248A:FF4C and cable FF4E
+void PollNiceboy(PollContext& ctx);   // Niceboy MW400 on its 248A:FA02 receiver (before the other 248A pollers)
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro / M800 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollRazerHeadsets(PollContext& ctx);  // BlackShark V2 HyperSpeed / V2 Pro (2020/2023) / V3 variants, Barracuda X (2022)
 void PollFantech(PollContext& ctx);   // Fantech Helios Go XD5 (wired 25A7:FA7B, dongle 25A7:FA7C)
@@ -109,6 +110,7 @@ void PollAirPods(PollContext& ctx);   // Apple AirPods / Beats (BLE proximity br
 void PollPhoneLink(PollContext& ctx);  // phone linked with Microsoft Phone Link (reads its Start menu card)
 void PollGalaxyBuds(PollContext& ctx); // Samsung Galaxy Buds (Bluetooth RFCOMM, not HID)
 void PollMoondrop(PollContext& ctx);   // MOONDROP GM01 Pro headset (WalkPlay 2.4 GHz dongle)
+void PollAlienware(PollContext& ctx);  // Alienware AW920H headset on its 2.4 GHz dongle (413C:A515)
 // Fallbacks.
 void PollHeadsetControl(PollContext& ctx);  // only if headsetcontrol.exe is installed
 void PollGenericHid(PollContext& ctx);
