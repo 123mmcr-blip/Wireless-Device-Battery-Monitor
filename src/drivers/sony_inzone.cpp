@@ -2,7 +2,8 @@
 //   H9 II (054C:0FA8), H5 (054C:0EBF) and the INZONE Buds dongle (054C:0EC2): over HID, report 02
 //   (64 bytes) on the vendor collection with usage page FF04.
 //   H9 / H7, first generation (054C:0E53): over the dongle's USB serial port, 460800 8N1. INZONE
-//   Hub keeps that port open while it runs, so the headset is only read while INZONE Hub is closed.
+//   Hub keeps that port open while it runs, so the headset is only read while INZONE Hub is closed;
+//   in between the last level stays on screen, dimmed, for up to an hour.
 // Battery = event 04, type 01 (GET) to the headset (addr 0x41).
 //   Headsets: reply payload [charging][percent], percent FF = headset off.
 //   Buds:     reply payload [status][percent] for the left bud, right bud, then case; percent FF =
@@ -226,6 +227,8 @@ void PollSonyInzone(PollContext& ctx) {
             s.kind = DeviceKind::Headset;
             s.via = L"2.4 GHz receiver";
             SetHeadsetBattery(s, p);
+            // While INZONE Hub holds the port nothing is reported; keep the last level (dimmed) meanwhile.
+            s.graceSec = 3600;
             ctx.Add(s, 0x054C, 0x0E53);
             break;
         }
