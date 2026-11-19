@@ -125,6 +125,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollGameSir(ctx);
     PollFlydigi(ctx);
     PollGameSirCyclone(ctx);
+    PollGameSirSapjoy(ctx);  // Tarantula Pro / NovaPro: SAPJoy device info on FF A0 (Nova and Cyclone 2 above keep their ids)
     PollGameSirBle(ctx);  // Cyclone Pro: battery over BLE; claims its dongle before the XInput fallback
     Poll8BitDo(ctx);
     PollBeitong(ctx);  // before the XInput fallback, which only sees the receiver as wired
