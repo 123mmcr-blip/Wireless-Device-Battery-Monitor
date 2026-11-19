@@ -107,7 +107,8 @@ The answer is read with `HidD_GetInputReport` on input report `07`. Byte 1 is
 the length of the new data in it; `0` means "nothing new yet", whatever the rest
 of the frame holds. Byte 2 is `80` through the dongle and `00` on the cable; the
 driver does not check it. The headset answers after about 60–120 ms with two messages,
-which can share one frame or come in separate ones:
+which can share one frame or come in separate ones (seen on the Xbox dongle: the
+acknowledgement alone, then its result at the start of the next answer):
 
 ```
 05 5B 03 00 D6 0C 00          acknowledgement, status 00
@@ -136,9 +137,19 @@ with the last level it holds, so the driver does not ask it, and the headset
 leaves the tray like any switched-off device. On its cable a switched-off
 headset keeps answering, and is shown charging.
 
+Measured on the Xbox dongle alone, with the headset switched off: it
+enumerated as a HID-only `Audeze Maxwell XBOX Dongle`, answered the battery
+query only with frames of length 0 that still held the last level (76%), and
+`--list` printed `No devices with battery info found.` Switched back on, the
+headset linked within a second, the dongle named itself `Audeze Maxwell HID`
+with its audio again, and the first query was answered after 79 ms. Every
+`--list` over the next two minutes matched the raw answers: 77%, then 76% to
+74% as the level settled after charging.
+
 Right after the headset is switched on, its first reading can be 0%
 (measured on the Xbox dongle in HaloBattery). A 0% in the first 90 seconds is
-shown as asleep; after that it is believed.
+shown as asleep; after that it is believed. It was not seen here: none of the
+25 answers in the two minutes above was 0%.
 
 ## Stuck dongle
 
