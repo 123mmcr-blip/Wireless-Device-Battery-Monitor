@@ -269,7 +269,7 @@ const Model kModels[] = {
     // Cloud III S: report 0C lives on the 64/64-byte collection, which Windows lists under usage page 01C0
     // (not a vendor page). The FF13 (62-byte) and FFC0 (32-byte) collections don't carry it.
     { 0x03F0, { 0x06BE, 0x02CC }, [](const HidColl& c) { return c.outLen() == 64 && c.inLen() == 64; }, Cloud3S },
-    { 0x03F0, { 0x0696, 0x018B, 0x0D93 }, [](const HidColl& c) { return c.page() == 0xFF90 && c.usage() == 0x0303; }, Cloud2 },
+    { 0x03F0, { 0x0696, 0x018B, 0x0D93, 0x0C8C }, [](const HidColl& c) { return c.page() == 0xFF90 && c.usage() == 0x0303; }, Cloud2 },  // 0C8C: Cloud Flight for PS, device request #2561, untested
     { 0x0951, { 0x1718 }, [](const HidColl& c) { return c.outLen() == 62; }, Cloud2Kingston },
     { 0x03F0, { 0x098D }, [](const HidColl& c) { return c.page() >= 0xFF00 && c.outLen() >= 3; }, CloudAlpha },
     { 0x03F0, { 0x08BE }, [](const HidColl& c) { return c.page() == 0xFF13 && c.usage() == 0xFF00; }, CloudAlpha2 },
