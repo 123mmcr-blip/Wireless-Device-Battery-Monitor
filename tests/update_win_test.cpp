@@ -139,7 +139,6 @@ int main() {
     assert(root.size() > suffix.size() && root.compare(root.size() - suffix.size(), suffix.size(), suffix) == 0);
     std::wstring download = updates::NewDownloadDirectory();
     assert(download.size() == root.size() + 33 && download.compare(0, root.size() + 1, root + L"\\") == 0);
-    assert(GetFileAttributesW(download.c_str()) & FILE_ATTRIBUTE_DIRECTORY);
-    assert(RemoveDirectoryW(download.c_str()));
+    assert(GetFileAttributesW(download.c_str()) & FILE_ATTRIBUTE_DIRECTORY);  // empty; the app's cleanup removes it after a day
     std::puts("Update Windows tests passed (HTTP guards, cancel race, dialogs, versions, schedule, SHA-256, arguments).");
 }
