@@ -13,10 +13,16 @@ namespace updates {
 namespace {
 constexpr ULONG kEcsPublicMagic = 0x31534345;  // BCRYPT_ECDSA_PUBLIC_P256_MAGIC ("ECS1")
 
+// BCryptCreateHash / HashData / FinishHash rather than the one-call BCryptHash: that one is Windows 10
+// only and missing from headers that target older Windows (the CI test build, without _WIN32_WINNT).
 bool Sha256(const std::string& data, unsigned char (&digest)[32]) {
     BCRYPT_ALG_HANDLE alg = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
     bool ok = BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) >= 0 &&
-              BCryptHash(alg, nullptr, 0, (PUCHAR)data.data(), (ULONG)data.size(), digest, sizeof(digest)) >= 0;
+              BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0) >= 0 &&
+              BCryptHashData(hash, (PUCHAR)data.data(), (ULONG)data.size(), 0) >= 0 &&
+              BCryptFinishHash(hash, digest, sizeof(digest), 0) >= 0;
+    if (hash) BCryptDestroyHash(hash);
     if (alg) BCryptCloseAlgorithmProvider(alg, 0);
     return ok;
 }

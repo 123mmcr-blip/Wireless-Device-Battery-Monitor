@@ -41,8 +41,6 @@ jobs:
 
       - name: Test device protocols and Windows updater
         shell: msys2 {0}
-        # Temporary (v1.1.0): one test fails only on this runner; tags still release while it is fixed.
-        continue-on-error: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: make test VERSION="$WB_VERSION" CHANNEL="$WB_CHANNEL"
 
       - name: Install Inno Setup
