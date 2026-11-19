@@ -8,6 +8,7 @@ The keyboard sends its radio module's 0–100 battery percentage about every 15 
 
 | Order | Usage |
 | --- | --- |
+| Optional active-charging prefix | `0F` |
 | Start marker | `07` |
 | High digit | `08 + (percent >> 4)` |
 | Low digit | `10 + (percent & 0F)` |
@@ -15,4 +16,4 @@ The keyboard sends its radio module's 0–100 battery percentage about every 15 
 
 The firmware reserves at least 50 ms between reports. The driver accepts complete frames within 500 ms and ignores values over 100. It expires samples after 35 seconds and drops the reader when the receiver disappears. The tray reads the latest sample at its regular refresh interval. A single `--list` invocation can finish before the first broadcast.
 
-The custom keyboard firmware and original receiver were tested together on a Halo96 V2 QMK/VIA ANSI. Charging state is not part of this protocol.
+The custom keyboard firmware and original receiver were tested together on a Halo96 V2 QMK/VIA ANSI. Charging requires the firmware build that emits the optional `0F` prefix immediately before `07`. A prefix older than 500 ms or interrupted by another usage is ignored. Earlier firmware still reports the battery percentage.

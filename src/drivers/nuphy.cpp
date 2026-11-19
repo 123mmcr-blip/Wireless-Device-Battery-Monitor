@@ -29,11 +29,11 @@ public:
 
     bool Running() const { return thread_ != nullptr; }
 
-    int Percent() {
+    nuphy::BatterySample Sample() {
         AcquireSRWLockShared(&lock_);
-        const int percent = GetTickCount64() - receivedMs_ <= kSampleLifetimeMs ? percent_ : -1;
+        const auto sample = GetTickCount64() - receivedMs_ <= kSampleLifetimeMs ? sample_ : nuphy::BatterySample{};
         ReleaseSRWLockShared(&lock_);
-        return percent;
+        return sample;
     }
 
 private:
@@ -42,9 +42,9 @@ private:
         return 0;
     }
 
-    void UpdateSample(int percent, ULONGLONG now) {
+    void UpdateSample(nuphy::BatterySample sample, ULONGLONG now) {
         AcquireSRWLockExclusive(&lock_);
-        percent_ = percent;
+        sample_ = sample;
         receivedMs_ = now;
         ReleaseSRWLockExclusive(&lock_);
     }
@@ -68,13 +68,13 @@ private:
                 if (now - started < kReadTimeoutMs / 2) {
                     device.Close();
                     frame = {};
-                    UpdateSample(-1, now);
+                    UpdateSample({}, now);
                     if (WaitForSingleObject(stop_, kReadTimeoutMs) != WAIT_TIMEOUT) break;
                 }
                 continue;
             }
-            const int percent = frame.Consume(report.data(), report.size(), now);
-            if (percent >= 0) UpdateSample(percent, now);
+            const auto sample = frame.Consume(report.data(), report.size(), now);
+            if (sample.percent >= 0) UpdateSample(sample, now);
         }
     }
 
@@ -82,7 +82,7 @@ private:
     HANDLE stop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     HANDLE thread_ = nullptr;
     SRWLOCK lock_ = SRWLOCK_INIT;
-    int percent_ = -1;
+    nuphy::BatterySample sample_;
     ULONGLONG receivedMs_ = 0;
 };
 
@@ -106,14 +106,15 @@ void PollNuPhy(PollContext& ctx) {
         }
         present.insert(c->path);
 
-        const int percent = it->second->Percent();
-        if (percent < 0) continue;
+        const auto sample = it->second->Sample();
+        if (sample.percent < 0) continue;
         DeviceStatus status;
         status.key = L"nuphy:" + c->path;
         status.name = L"NuPhy Halo96 V2";
         status.via = L"2.4 GHz receiver";
         status.kind = DeviceKind::Keyboard;
-        status.percent = percent;
+        status.percent = sample.percent;
+        status.charging = sample.charging;
         ctx.Add(status, kVendor, kProduct);
     }
     for (auto it = receivers.begin(); it != receivers.end();) {

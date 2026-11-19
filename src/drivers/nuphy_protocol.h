@@ -5,14 +5,23 @@
 
 namespace nuphy {
 
+struct BatterySample {
+    int percent = -1;
+    bool charging = false;
+};
+
 // Custom Halo96 V2 firmware sends a start marker, two digits and a release
-// in successive Consumer Control reports. See docs/nuphy-halo96-v2.md.
+// in successive Consumer Control reports, with an optional charging prefix.
 class BatteryFrame {
 public:
-    int Consume(const std::uint8_t* report, std::size_t size, std::uint64_t nowMs) {
-        if (size < 3 || report[0] != 0x03) return -1;
+    BatterySample Consume(const std::uint8_t* report, std::size_t size, std::uint64_t nowMs) {
+        if (size < 3 || report[0] != 0x03) return {};
         const int usage = report[1] | (report[2] << 8);
-        if (usage == 0x07) {
+        if (usage == 0x0f) {
+            next_ = Next::ChargingStart;
+            startedMs_ = nowMs;
+        } else if (usage == 0x07) {
+            charging_ = next_ == Next::ChargingStart && nowMs - startedMs_ <= 500;
             next_ = Next::High;
             startedMs_ = nowMs;
         } else if (nowMs - startedMs_ > 500) {
@@ -24,18 +33,19 @@ public:
             percent_ |= usage - 0x10;
             next_ = Next::Release;
         } else {
-            const int result = next_ == Next::Release && usage == 0 && percent_ <= 100 ? percent_ : -1;
+            const bool valid = next_ == Next::Release && usage == 0 && percent_ <= 100;
             next_ = Next::Start;
-            return result;
+            return valid ? BatterySample{percent_, charging_} : BatterySample{};
         }
-        return -1;
+        return {};
     }
 
 private:
-    enum class Next { Start, High, Low, Release };
+    enum class Next { Start, ChargingStart, High, Low, Release };
     Next next_ = Next::Start;
     std::uint64_t startedMs_ = 0;
     int percent_ = 0;
+    bool charging_ = false;
 };
 
 }  // namespace nuphy
