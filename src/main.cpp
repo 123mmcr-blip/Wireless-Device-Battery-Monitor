@@ -47,6 +47,7 @@ enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY,
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
+    ID_LIMIT_OFF = 600, ID_LIMIT_FIRST,  // "Notify when charged to": off, then alerts::kChargeLimits
     ID_UPDATE = 200, ID_AUTO_UPDATE,
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
@@ -73,6 +74,7 @@ bool g_useWidget = false;      // what is actually shown right now
 bool g_hideLastKnown = false;  // hide (last known) / asleep devices from taskbar and tray
 bool g_showDisconnectedDevices = false;  // opt-in, explicit driver-reported offline devices only
 bool g_recordHistory = true;  // save readings for "Battery history..." (menu option, on by default)
+int g_chargeLimit = 0;        // "Notify when charged to" 80/85/90%, 0 = off (the default)
 std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all", "main" or one monitor id
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
 bool g_stacked = false;      // icon above the percentage (menu option)
@@ -86,6 +88,7 @@ struct TrayEntry {
     ULONGLONG lastSeen = 0;
     bool added = false;
     bool lowWarned = false;
+    bool limitWarned = false;  // "unplug at 80%" already shown during this charge
     std::wstring iconSig;    // what the current icon shows, to avoid needless redraws
     HICON icon = nullptr;
 };
@@ -478,10 +481,7 @@ void TrayDelete(UINT uid) {
     Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
-void ShowBatteryAlert(TrayEntry& e) {
-    const std::wstring title = T(L"Low battery");
-    const std::wstring message = TF(L"{name} is at {percent}%",
-                                   { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(e.st.percent) } });
+void ShowNotification(TrayEntry& e, const std::wstring& title, const std::wstring& message) {
     if (!g_useWidget && e.added) {
         TrayCall(NIM_MODIFY, e.uid, e.icon, DisplayName(e) + L"\n" + StatusText(e), title.c_str(), message);
         return;
@@ -493,6 +493,17 @@ void ShowBatteryAlert(TrayEntry& e) {
              L"BatteryHub", title.c_str(), message);
     g_alertIconAdded = true;
     SetTimer(g_hwnd, TIMER_ALERT_ICON, 60 * 1000, nullptr);
+}
+
+void ShowBatteryAlert(TrayEntry& e) {
+    ShowNotification(e, T(L"Low battery"), TF(L"{name} is at {percent}%",
+                                              { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(e.st.percent) } }));
+}
+
+void ShowChargeLimitAlert(TrayEntry& e) {
+    ShowNotification(e, T(L"You can unplug it"),
+                     TF(L"{name} is charged to {percent}%. Stopping around here helps the battery last longer.",
+                        { { L"name", DisplayName(e) }, { L"percent", std::to_wstring(e.st.percent) } }));
 }
 
 void UpdatePlaceholder() {
@@ -609,6 +620,7 @@ void OnResults(std::vector<DeviceStatus>& results) {
     for (auto& s : results) {
         auto& e = g_entries[s.key];
         if (!e.uid) e.uid = StableId(s.key);
+        const int previousPercent = e.st.connected && !e.st.asleep ? e.st.percent : -1;  // the last fresh reading
         e.st = s;
         if (s.percent >= 0) e.lastPct = s.percent;
         e.lastSeen = GetTickCount64();
@@ -623,8 +635,10 @@ void OnResults(std::vector<DeviceStatus>& results) {
         if (g_alertLatches.size() > 256) g_alertLatches.erase(g_alertLatches.begin());
         if (g_recordHistory && s.connected && !s.asleep && s.percent >= 0)
             battery_history::Observe(s.key, s.percent, s.charging);
+        bool limit = !IsHidden(s.key) && alerts::ShouldNotifyChargeLimit(s, g_chargeLimit, previousPercent, e.limitWarned);
         ApplyEntry(e);
         if (notify) ShowBatteryAlert(e);
+        else if (limit) ShowChargeLimitAlert(e);
     }
     for (auto it = g_entries.begin(); it != g_entries.end();) {
         auto& e = it->second;
@@ -736,6 +750,21 @@ void SetBrandColors(bool on) {
     SaveBrandColors(on);
     RedrawAll();
     UpdateWidget();
+}
+
+void SetChargeLimit(int limit) {
+    g_chargeLimit = limit;
+    DWORD v = (DWORD)limit;
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"ChargeLimitAlert", REG_DWORD, &v, sizeof(v));
+    for (auto& [k, e] : g_entries) e.limitWarned = false;
+}
+
+int LoadChargeLimit() {
+    DWORD v = 0, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"ChargeLimitAlert", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    for (int l : alerts::kChargeLimits)
+        if ((int)v == l) return l;
+    return 0;
 }
 
 void SetPollSeconds(DWORD seconds) {
@@ -851,6 +880,18 @@ void ShowMenu() {
     AppendMenuW(m, MF_STRING | (g_hideLastKnown ? MF_CHECKED : 0), ID_HIDE_LAST_KNOWN, T(L"Hide last known / asleep devices"));
     AppendMenuW(m, MF_STRING | (g_showDisconnectedDevices ? MF_CHECKED : 0), ID_SHOW_DISCONNECTED, T(L"Show disconnected devices"));
     AppendMenuW(m, MF_STRING | (g_recordHistory ? MF_CHECKED : 0), ID_RECORD_HISTORY, T(L"Record battery history"));
+    {
+        HMENU sub = CreatePopupMenu();
+        AppendMenuW(sub, MF_STRING, ID_LIMIT_OFF, T(L"Off"));
+        AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        UINT checked = ID_LIMIT_OFF;
+        for (UINT i = 0; i < (UINT)alerts::kChargeLimitCount; i++) {
+            AppendMenuW(sub, MF_STRING, ID_LIMIT_FIRST + i, (std::to_wstring(alerts::kChargeLimits[i]) + L"%").c_str());
+            if (g_chargeLimit == alerts::kChargeLimits[i]) checked = ID_LIMIT_FIRST + i;
+        }
+        CheckMenuRadioItem(sub, ID_LIMIT_OFF, ID_LIMIT_FIRST + alerts::kChargeLimitCount - 1, checked, MF_BYCOMMAND);
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Notify when charged to (saves the battery)"));
+    }
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (g_wantWidget ? MF_CHECKED : 0), ID_MODE_WIDGET, T(L"Show on the taskbar (icon + percentage)"));
     AppendMenuW(m, MF_STRING | (!g_wantWidget ? MF_CHECKED : 0), ID_MODE_TRAY, T(L"Show as tray icons"));
@@ -937,6 +978,7 @@ void ShowMenu() {
         case ID_HIDE_LAST_KNOWN: SetHideLastKnown(!g_hideLastKnown); break;
         case ID_SHOW_DISCONNECTED: SetShowDisconnectedDevices(!g_showDisconnectedDevices); break;
         case ID_RECORD_HISTORY: g_recordHistory = !g_recordHistory; SaveRecordHistory(g_recordHistory); break;
+        case ID_LIMIT_OFF: SetChargeLimit(0); break;
         case ID_WIDGET_BACKGROUND: SetWidgetBackground(!g_widgetBackground); break;
         case ID_MONITOR_ALL: SetWidgetMonitor(L"all"); break;
         case ID_LANG_AUTO: SetLanguage(L""); break;
@@ -952,7 +994,9 @@ void ShowMenu() {
         case ID_AUTO_UPDATE: updates::ToggleAutomatic(); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
         default:
-            if (cmd >= ID_POLL_FIRST && cmd < ID_POLL_FIRST + ARRAYSIZE(POLL_SECONDS)) {
+            if (cmd >= ID_LIMIT_FIRST && cmd < ID_LIMIT_FIRST + (UINT)alerts::kChargeLimitCount) {
+                SetChargeLimit(alerts::kChargeLimits[cmd - ID_LIMIT_FIRST]);
+            } else if (cmd >= ID_POLL_FIRST && cmd < ID_POLL_FIRST + ARRAYSIZE(POLL_SECONDS)) {
                 SetPollSeconds(POLL_SECONDS[cmd - ID_POLL_FIRST]);
             } else if (cmd >= ID_LANG_FIRST && cmd < ID_LANG_FIRST + languages.size()) {
                 SetLanguage(languages[cmd - ID_LANG_FIRST].code);
@@ -1266,6 +1310,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_hideLastKnown = LoadHideLastKnown();
     g_showDisconnectedDevices = LoadShowDisconnectedDevices();
     g_recordHistory = LoadRecordHistory();
+    g_chargeLimit = LoadChargeLimit();
     g_widgetBackground = LoadWidgetBackground();
     g_brandColors = LoadBrandColors();
     g_stacked = LoadStacked();
