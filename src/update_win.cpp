@@ -221,6 +221,7 @@ void CleanOldDownloads() {
     DWORD length = GetTempPathW(ARRAYSIZE(temporary), temporary);
     if (length && length < ARRAYSIZE(temporary)) CleanDownloadsIn(temporary, L"WirelessBattery-update-");
 }
+}
 
 void Initialize() {
     CleanOldDownloads();
