@@ -102,6 +102,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollMchoseKeyboard(ctx);  // 3837:3033 receiver, before the generic fallbacks
     PollMiscMice(ctx);
     PollFantech(ctx);
+    PollRaigor(ctx);
     PollRazerHeadsets(ctx);  // before the generic Razer driver, which shares the vendor id
     PollBarracudaPro(ctx);   // before the generic Razer driver as well
     PollHyperX(ctx);

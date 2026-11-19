@@ -124,6 +124,7 @@ void PollNiceboy(PollContext& ctx);   // Niceboy MW400 on its 248A:FA02 receiver
 void PollMiscMice(PollContext& ctx);  // Motospeed X6, Delux M900 Pro / M800 Pro, Ajazz AJ179 and AJ159/AJ-series
 void PollRazerHeadsets(PollContext& ctx);  // BlackShark V2 HyperSpeed / V2 Pro (2020/2023) / V3 variants, Barracuda X (2022)
 void PollFantech(PollContext& ctx);   // Fantech Helios Go XD5 (wired 25A7:FA7B, dongle 25A7:FA7C)
+void PollRaigor(PollContext& ctx);    // Fantech Raigor III / generic mice on the 1EA7:0066 dongle (FFB5)
 std::wstring DumpXentaFrames();        // raw Xenta (1D57) status frames, for `--dump`
 std::wstring DumpAstroFrames();        // raw ASTRO (9886) 0x54 / 0x7C exchanges, for `--dump`
 void PollPulsar(PollContext& ctx);    // Pulsar X2 V3 / X2 V3 eS on 3710 (before Kysona, same vendor id)
