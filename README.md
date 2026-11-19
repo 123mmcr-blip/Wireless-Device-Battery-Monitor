@@ -109,6 +109,7 @@ Turn off **Record battery history** in the menu to stop saving readings; what wa
 | **Kysona / Pulsar / ATK (VXE) / Hitscan** | Kysona M600 / Mercury, Pulsar and ATK VXE wireless mice (e.g. VXE X3 Pro, VXE Dragonfly R1 / R1 Pro Max / R1 SE+, ATK F1 Extreme), Hitscan Hyperlight, Chimera V2 (receiver 3554:F512) | Shared vendor protocol with checksummed replies |
 | **Pulsar X2 V3** | X2 V3 on the 1K dongle (`3710:5402`) or USB cable (`3710:3402`); X2 V3 eS on the 8K dongle (`3710:5403`) or USB cable (`3710:3406`) | 64-byte vendor feature report, battery register `08 81 01` (read-only) |
 | **ATK / VXE NK** | VXE R1 NK and other NearLink mice on the NK mouse NANO dongle (`373B:1216`) | ATK BITMOUSE output report 08 on `FF05:0001` (battery and charging) |
+| **ATK Zero** | USB cable (`373B:1154`) and 8K L0 / L1 receivers (`373B:124F` / `373B:1155`) on Windows | 64-byte ATK BITMOUSE report 08 on `FF05:0001` (battery on both links, charging over the cable) |
 | **ATK 8K Nano** | ATK / VXE mice on the ATK 8K Nano Dongle (`373B:1178`) | Holtek GetConfigData (`82`) feature report on `FF10:0001` (from ATK HUB; battery and charging) |
 | **ATK headsets** | ATK N9 Pro, N9 Ultra (first generation) | Virtual COM port protocol (the ATK desktop app must be closed) |
 | **G-Wolves** | Fenrir, Fenrir Pro / Max / Asym, HTX, HTS, HSK, HTR, HT-S2, Lycan, WARG, VUK and their 8K dongles | Glorious or Kysona protocol, depending on the model |
