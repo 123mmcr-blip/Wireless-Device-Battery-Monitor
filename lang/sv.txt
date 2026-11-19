@@ -82,8 +82,8 @@ Automatic (Windows language) = Automatiskt (Windows-språk)
 Add your own language... = Lägg till ditt eget språk...
 Language = Språk
 Check battery every = Intervall för batterikontroll
-{seconds} s =
-{minutes} min =
+{seconds} s = {seconds} s
+{minutes} min = {minutes} min
 Refresh now = Uppdatera nu
 Start with Windows = Starta med Windows
 Request support for a device... = Begär stöd för en enhet...
@@ -121,13 +121,13 @@ Collecting the full report (this takes about 10 seconds)... = Samlar in den full
 request support for a device = begär stöd för en enhet
 Other monitor = Annan bildskärm
 Display {number} = Bildskärm {number}
- 
+
 # Where another monitor sits, next to the main one ("Display 3 (left)")
 left = vänster
 right = höger
 above = ovanför
 below = nedanför
- 
+
 # Coarse battery levels (devices that only report a few steps)
 Full = Full
 Good = Hög
@@ -135,14 +135,14 @@ Medium = Medel
 Low = Låg
 Critical = Kritisk
 Empty = Tom
- 
+
 # Device types (request window)
 mouse = mus
 keyboard = tangentbord
 headset = headset
 controller = spelkontroll
 other = annat
- 
+
 # How a device is connected
 2.4 GHz dongle = 2,4 GHz-dongel
 2.4 GHz dongle or USB = 2,4 GHz-dongel eller USB
@@ -155,12 +155,12 @@ Corsair receiver = Corsair-mottagare
 Jabra Link dongle = Jabra Link-dongel
 Logitech receiver = Logitech-mottagare
 Razer receiver = Razer-mottagare
-USB / Bluetooth =
+USB / Bluetooth = USB / Bluetooth
 USB base station = USB-basstation
 USB cable = USB-kabel
 UWB base station = UWB-basstation
 Wireless adapter = Trådlös adapter
- 
+
 # Updates
 Automatically check for updates = Sök efter uppdateringar automatiskt
 Later = Senare
