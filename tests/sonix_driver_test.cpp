@@ -38,8 +38,27 @@ static PollContext Poll(HidColl collection, std::deque<std::vector<BYTE>> input)
     PollContext ctx; ctx.colls = {collection}; PollSonix(ctx); return ctx;
 }
 int main() {
-    for (auto id : {std::pair<USHORT, USHORT>{0x05AC, 0x024F}, {0x0C45, 0xFEFE}, {0x0C45, 0xFDFD}, {0x342D, 0xE479}}) {
-        auto ctx = Poll(Collection(id.first, id.second, 3), {{0x20, 1, 0, 73}});
+    for (auto id : {std::pair<USHORT, USHORT>{0x05AC, 0x024F},
+        {0x0C45, 0xFEFE},
+        {0x0C45, 0xFDFD},
+        {0x342D, 0xE479},
+        {0x342D, 0xE485},
+        {0x342D, 0xE4BC},
+        {0x342D, 0xE4C2},
+        {0x342D, 0xE407},
+        {0x388D, 0x0003},
+        {0x0DB0, 0x0CA0},
+        {0x36B0, 0x30BD},
+        {0x342D, 0xE51A},
+        {0x342D, 0xE487},
+        {0x342D, 0xE537},
+        {0x388D, 0x0002},
+        {0x19F5, 0x3245},
+        {0x362D, 0xD028},
+        {0x362D, 0xD030},
+        {0x362D, 0xD101},
+        {0x342D, 0xE49F}}) {
+        auto ctx = Poll(Collection(id.first, id.second, (id.first == 0x05AC || id.first == 0x0C45) ? 3 : 1), {{0x20, 1, 0, 73}});
         assert(ctx.out.size() == 1 && ctx.out[0].percent == 73);
         assert(ctx.out[0].key == L"sonix:" + Hex4(id.first) + L":" + Hex4(id.second));
         assert(ctx.out[0].name == L"Keyboard" && ctx.out[0].graceSec == 1800);
@@ -51,7 +70,7 @@ int main() {
         assert(ctx.out.size() == 1 && ctx.out[0].connected == connected);
         assert(ctx.out[0].percent == (connected ? level : -1));
     }
-    for (int fault = 0; fault < 7; ++fault) {
+    for (int fault = 0; fault < 8; ++fault) {
         auto c = Collection();
         if (fault == 0) c.vid = 0xFFFF;
         if (fault == 1) c.pid = 0xFFFF;
@@ -60,15 +79,20 @@ int main() {
         if (fault == 4) --c.caps.InputReportByteLength;
         if (fault == 5) --c.caps.OutputReportByteLength;
         if (fault == 6) c = Collection(0x05AC, 0x024F, 1);
+        if (fault == 7) c = Collection(0x36B0, 0x3002, 1); // PMO/VIA shared ID stays excluded.
         assert(Poll(c, {{0x20, 1, 0, 73}}).out.empty() && opens == 0);
     }
-    auto noisy = Poll(Collection(), {{0x20}, {0, 1, 0, 73}, {0x20, 2, 0, 73}, {0x20, 1, 1, 73}, {0x20, 1, 0, 73}});
+    auto noisy = Poll(Collection(), {{0x20}, {0, 1, 0, 73},
+        {0x20, 2, 0, 73},
+        {0x20, 1, 1, 73},
+        {0x20, 1, 0, 73}});
     assert(noisy.out.size() == 1 && writes == 1);
-    assert(Poll(Collection(), {{}, {0x20, 1, 0, 73}}).out.size() == 1 && writes == 2);
+    assert(Poll(Collection(), {{},
+        {0x20, 1, 0, 73}}).out.size() == 1 && writes == 2);
     assert(Poll(Collection(), {}).out.empty() && writes == 2);
     openOk = false;
     assert(Poll(Collection(), {}).out.empty() && writes == 0);
     openOk = true; writeOk = false;
     assert(Poll(Collection(), {}).out.empty() && writes == 2);
-    puts("SONiX driver tests passed");
+    puts("SONiX driver tests passed (20 receiver IDs)");
 }

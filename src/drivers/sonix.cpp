@@ -25,6 +25,22 @@ const Dongle kDongles[] = {
     { 0x0C45, 0xFEFE, 3 },
     { 0x0C45, 0xFDFD, 3 },
     { 0x342D, 0xE479, -1 },  // EPOMAKER P75 (hardware untested)
+    { 0x342D, 0xE485, -1 },  // RK Royal Kludge R75 (PR #2593, hardware untested)
+    { 0x342D, 0xE4BC, -1 },  // Redragon Arlokks K742B (PR #2594, hardware untested)
+    { 0x342D, 0xE4C2, -1 },  // M1 V5 VIA (PR #2595, hardware untested)
+    { 0x342D, 0xE407, -1 },  // Lucky65V2 (PR #2597, hardware untested)
+    { 0x388D, 0x0003, -1 },  // Lofree Flow2 (PR #2598, hardware untested)
+    { 0x0DB0, 0x0CA0, -1 },  // MSI FORGE TKL W FRIEREN EDITION (PR #2599, hardware untested)
+    { 0x36B0, 0x30BD, -1 },  // Essential75 (PR #2607, hardware untested)
+    { 0x342D, 0xE51A, -1 },  // NUT65 (PR #2608, hardware untested)
+    { 0x342D, 0xE487, -1 },  // RK 2.4G Dongle (PR #2609, hardware untested)
+    { 0x342D, 0xE537, -1 },  // WEIKAV MAX102 (PR #2610, hardware untested)
+    { 0x388D, 0x0002, -1 },  // Lofree Flow2 (PR #2612, hardware untested)
+    { 0x19F5, 0x3245, -1 },  // NuPhy Air75V2 (PR #2613, hardware untested)
+    { 0x362D, 0xD028, -1 },  // SKN Qinglong (PR #2614, hardware untested)
+    { 0x362D, 0xD030, -1 },  // Lemokey Link (PR #2616, hardware untested)
+    { 0x362D, 0xD101, -1 },  // Wireless Link (PR #2617, hardware untested)
+    { 0x342D, 0xE49F, -1 },  // Spade65-QMK-2.4GHz (PR #2619, hardware untested)
 };
 
 const size_t kLen = 32;  // payload bytes after the report id; the last one is the checksum
