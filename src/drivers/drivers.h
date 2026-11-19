@@ -64,7 +64,7 @@ void PollEndgameWe(PollContext& ctx);     // Endgame Gear XM2we on its original 
 void PollAtkKeyboard(PollContext& ctx);   // ATK V75X keyboard (320F:5088 receiver, 5055 cable)
 void PollBarracudaPro(PollContext& ctx);  // Razer Barracuda Pro (1532:053A), before the generic Razer driver
 void PollSteelSeriesElite(PollContext& ctx);  // SteelSeries Arctis Nova Elite base station (1038:2244)
-void PollAudeze(PollContext& ctx);        // Audeze Maxwell (VID 3329) dongle or cable
+void PollAudeze(PollContext& ctx);        // Audeze Maxwell (VID 3329): PC / Xbox / Maxwell 2 dongles or cable
 void PollNzxt(PollContext& ctx);          // NZXT Lift Elite Wireless (1E71:2101 / 2129)
 void PollPlantronics(PollContext& ctx);   // Poly / Plantronics headsets behind the BT600 adapter (047F)
 void PollVaxee(PollContext& ctx);     // VAXEE 4K receiver / NP-01S V2 cable, read-only battery commands

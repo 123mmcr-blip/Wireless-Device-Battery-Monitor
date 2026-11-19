@@ -50,6 +50,8 @@ test:
 	./build/niceboy_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/alienware_driver_test.cpp src/drivers/alienware.cpp -o build/alienware_driver_test.exe
 	./build/alienware_driver_test.exe
+	$(CXX) $(CXXFLAGS) tests/audeze_driver_test.cpp src/drivers/audeze.cpp -o build/audeze_driver_test.exe
+	./build/audeze_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/mchose_modern_driver_test.cpp src/drivers/mchose_modern.cpp -o build/mchose_modern_driver_test.exe
 	./build/mchose_modern_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/vaxee_driver_test.cpp src/drivers/vaxee.cpp -o build/vaxee_driver_test.exe

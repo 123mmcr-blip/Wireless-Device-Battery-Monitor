@@ -341,6 +341,7 @@ std::wstring StatusText(const TrayEntry& e) {
     if (!s.detail.empty() && s.percent >= 0) t += L" (" + s.detail + L")";
     if (s.charging) t += std::wstring(L", ") + T(L"charging");
     if (s.asleep) t += std::wstring(L", ") + T(L"asleep");
+    if (!s.note.empty() && s.percent < 0) t += std::wstring(L", ") + T(s.note);
     return t;
 }
 
@@ -901,6 +902,7 @@ int ListToConsole(bool dump) {
         else line += L"unknown";
         if (!s.detail.empty()) line += L" (" + s.detail + L")";
         if (s.charging) line += L", charging";
+        if (!s.note.empty() && s.percent < 0) line += L", " + s.note;
         if (s.millivolts) line += L", " + std::to_wstring(s.millivolts) + L" mV";
         write(line + L"   (" + s.key + L")\n");
     }

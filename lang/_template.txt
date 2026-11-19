@@ -13,6 +13,7 @@ off / not connected =
 unknown = 
 charging = 
 asleep = 
+unplug the dongle and plug it back in = 
 No devices with battery info found = 
 Low battery = 
 {name} is at {percent}% = 
