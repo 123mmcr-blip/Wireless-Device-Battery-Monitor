@@ -36,6 +36,8 @@ clean:
 
 test: test-update-core test-update-win test-update-signature
 	@mkdir -p build
+	$(CXX) -std=c++17 -O2 -Wall -Wextra tests/phonelink_protocol_test.cpp -o build/phonelink_protocol_test.exe
+	./build/phonelink_protocol_test.exe
 	$(CXX) -std=c++17 -O2 -Wall tests/device_aliases_test.cpp -o build/device_aliases_test.exe
 	./build/device_aliases_test.exe
 	$(CXX) -std=c++17 -O2 -Wall -Wextra tests/alert_rules_test.cpp -o build/alert_rules_test.exe
