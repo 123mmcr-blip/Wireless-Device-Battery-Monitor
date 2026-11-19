@@ -187,26 +187,35 @@ void PollAzothDongle(PollContext& ctx, std::vector<std::wstring>& seen) {
     auto colls = ctx.Find(0x0B05, 0x1AD0, [](const HidColl& c) {
         return c.iface == 2 && c.outLen() >= 12 && PathHas(c.path, L"col02");
     });
+    // Several col02 instances exist; one of them can answer asleep while another answers with the
+    // battery, so a real answer wins over any asleep answer.
+    bool sawAsleep = false;
     for (const HidColl* c : colls) {
         HidDev d;
         std::vector<BYTE> r;
         if (!d.Open(*c)) continue;
         Reply res = Query(d, 0x02, 0x12, 0x01, r);
-        if (res == Reply::None || (res == Reply::Asleep && !awake)) continue;
+        if (res == Reply::Asleep) sawAsleep = true;
+        if (res != Reply::Ok) continue;
+        awake = true;
         DeviceStatus s;
         s.key = L"rog:1C10:kb";
         s.name = L"ROG Azoth 96 HE";
         s.kind = DeviceKind::Keyboard;
         s.via = L"2.4 GHz receiver";
-        if (res == Reply::Asleep) {
-            s.asleep = true;
-        } else {
-            awake = true;
-            if (r[6] <= 100) s.percent = r[6];
-            s.charging = r[9] == 1;
-        }
+        if (r[6] <= 100) s.percent = r[6];
+        s.charging = r[9] == 1;
         AddOnce(ctx, seen, s);
         return;
+    }
+    if (sawAsleep && awake) {
+        DeviceStatus s;
+        s.key = L"rog:1C10:kb";
+        s.name = L"ROG Azoth 96 HE";
+        s.kind = DeviceKind::Keyboard;
+        s.via = L"2.4 GHz receiver";
+        s.asleep = true;
+        AddOnce(ctx, seen, s);
     }
 }
 
