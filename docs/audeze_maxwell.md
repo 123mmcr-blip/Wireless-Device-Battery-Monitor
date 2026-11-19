@@ -11,7 +11,7 @@ product IDs:
 | `4B19` | Maxwell dongle (PC / PlayStation) | tested in HaloBattery |
 | `4B1A` | Maxwell USB-C cable | tested in HaloBattery |
 | `4B18` | Maxwell for Xbox dongle | tested here, see below |
-| `4B1E` | Maxwell for Xbox USB-C cable | untested; derived from `4B18` the way `4B1A` follows `4B19` |
+| `4B1E` | Maxwell for Xbox USB-C cable | tested here, see below |
 | `4B29`, `4B28` | Maxwell 2 dongle, Maxwell 2 for Xbox dongle | untested |
 
 Cable IDs are read first: a headset on its cable and on the dongle at once is
@@ -44,7 +44,33 @@ following reads repeated the frame with length `00`. `--list` printed:
 Audeze Maxwell  [2.4 GHz dongle]  68%   (audeze:maxwell)
 ```
 
-The Xbox headset's USB-C cable and charging over it were not tested.
+The same headset was then connected by its USB-C cable. On its own, the cable
+enumerates as `3329:4B1E`, the ID the driver had derived from `4B18`: a
+composite USB device named `Audeze Maxwell XBOX Headset`, with two audio
+interfaces and HID interface 0, whose three collections report the product
+name `USB-Audeze Maxwell HID`. It answers the same query the same way, except
+that byte 2 of the reply is `00` instead of the dongle's `80`:
+
+```
+07 10 00 05 5B 03 00 D6 0C 00 05 5D 05 00 D6 0C 00 00 45 ...
+```
+
+`--list` printed `Audeze Maxwell  [USB cable]  69%, charging`, and the
+headset's LED showed it charging.
+
+With the dongle plugged in as well, the cable re-enumerated as a HID-only
+device: no audio interfaces and no interface number, and its collections are
+named `Audeze Maxwell XBOX Headset`. The dongle kept the audio and reported
+`Audeze Maxwell HID`. Both answered the battery query (cable 75%, dongle 76% a
+minute later, while charging), and the app showed the headset once, read over
+the cable:
+
+```
+Audeze Maxwell  [USB cable]  75%, charging   (audeze:maxwell)
+```
+
+Switching the headset off while it is on the cable was not tested on the Xbox
+model.
 
 ## Protocol
 
@@ -66,7 +92,8 @@ The request is the single battery query, a zero-padded 62-byte output report:
 
 The answer is read with `HidD_GetInputReport` on input report `07`. Byte 1 is
 the length of the new data in it; `0` means "nothing new yet", whatever the rest
-of the frame holds. The headset answers after about 60–120 ms with two messages,
+of the frame holds. Byte 2 is `80` through the dongle and `00` on the cable; the
+driver does not check it. The headset answers after about 60–120 ms with two messages,
 which can share one frame or come in separate ones:
 
 ```
@@ -131,7 +158,8 @@ is never called stuck.
 
 `make test` includes `tests/audeze_driver_test.cpp`, which links the production
 driver against a simulated HID transport. It checks the exact request, the
-captured Xbox frames above (the new result wins over the leftover one), levels
+captured Xbox frames above (the new result wins over the leftover one; the
+cable in both its composite and HID-only layouts), levels
 that arrive late or split across frames, an acknowledgement on its own, the
 stuck dongle (asleep once, then the advice, cleared by an answer or an unplug),
 the renamed dongle with the headset off, failed reads and writes, the power-on

@@ -1,8 +1,8 @@
 // Audeze Maxwell headsets (VID 3329) on the USB dongle or the USB-C cable.
 // Ported from HaloBattery (github.com/HeyOkay/HaloBattery, providers/audeze.py, MIT; the dongle 4B19 and the
 // cable 4B1A were tested there on hardware), whose packets come from HeadsetControl
-// (lib/devices/audeze_maxwell.hpp). The Xbox dongle 4B18 was tested with this driver; captured frames and the
-// protocol notes are in docs/audeze_maxwell.md.
+// (lib/devices/audeze_maxwell.hpp). The Xbox dongle 4B18 and the Xbox cable 4B1E were tested with this driver;
+// captured frames and the protocol notes are in docs/audeze_maxwell.md.
 //   Vendor collection FF13:0001. Request: 62-byte output report 06; answer: 62-byte input report 07,
 //   fetched with GetInputReport. The answer is a rolling buffer of recent replies, so it is scanned for the
 //   battery marker D6 0C 00 00 <percent>.
