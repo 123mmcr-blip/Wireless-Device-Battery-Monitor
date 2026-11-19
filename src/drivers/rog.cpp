@@ -179,23 +179,32 @@ void PollOmni(PollContext& ctx, std::vector<std::wstring>& seen) {
 
 // ROG Azoth 96 HE (0B05:1C10) on the SpeedNova 8K receiver (0B05:1AD0). The receiver's own pid is
 // the Harpe II Ace mouse channel, so the keyboard is read here without claiming that pid. Keyboard
-// query [02][12][01] on the col02 collection: [6] battery %, [9] == 1 charging. No reply = not paired
-// or asleep, so the keyboard is not shown.
+// query [02][12][01] on the col02 collection: [6] battery %, [9] == 1 charging. An FF AA answer means
+// the keyboard is asleep, but the receiver gives the same answer when nothing is paired, so asleep is
+// only shown once the keyboard has answered awake in this session (same rule as the receiver's mice).
 void PollAzothDongle(PollContext& ctx, std::vector<std::wstring>& seen) {
+    static bool awake = false;
     auto colls = ctx.Find(0x0B05, 0x1AD0, [](const HidColl& c) {
         return c.iface == 2 && c.outLen() >= 12 && PathHas(c.path, L"col02");
     });
     for (const HidColl* c : colls) {
         HidDev d;
         std::vector<BYTE> r;
-        if (!d.Open(*c) || Query(d, 0x02, 0x12, 0x01, r) != Reply::Ok) continue;
+        if (!d.Open(*c)) continue;
+        Reply res = Query(d, 0x02, 0x12, 0x01, r);
+        if (res == Reply::None || (res == Reply::Asleep && !awake)) continue;
         DeviceStatus s;
         s.key = L"rog:1C10:kb";
         s.name = L"ROG Azoth 96 HE";
         s.kind = DeviceKind::Keyboard;
         s.via = L"2.4 GHz receiver";
-        if (r[6] <= 100) s.percent = r[6];
-        s.charging = r[9] == 1;
+        if (res == Reply::Asleep) {
+            s.asleep = true;
+        } else {
+            awake = true;
+            if (r[6] <= 100) s.percent = r[6];
+            s.charging = r[9] == 1;
+        }
         AddOnce(ctx, seen, s);
         return;
     }
