@@ -26,6 +26,13 @@ const std::vector<BYTE> kCapturedXboxCable = Report({
     0x00, 0x45, 0x0C, 0x00, 0x00, 0x45, 0x1C, 0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C, 0x03, 0x05, 0x5C, 0x03,
     0x00, 0x80, 0x2C, 0x01, 0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C, 0x03, 0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C,
     0x1C, 0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C, 0x03, 0x05, 0x5C, 0x03 });
+// The headset switched off on its cable, with the dongle also plugged in: the cable still answers while it charges,
+// after three 5C notifications. Length 0x25, 0x4D = 77%.
+const std::vector<BYTE> kCapturedXboxCableOff = Report({
+    0x07, 0x25, 0x00, 0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C, 0x03, 0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C, 0x01,
+    0x05, 0x5C, 0x03, 0x00, 0x80, 0x2C, 0x00, 0x05, 0x5B, 0x03, 0x00, 0xD6, 0x0C, 0x00, 0x05, 0x5D, 0x05,
+    0x00, 0xD6, 0x0C, 0x00, 0x00, 0x4D, 0x2C, 0x1C, 0x05, 0x5B, 0x03, 0x00, 0xD6, 0x0C, 0x00, 0x05, 0x5D,
+    0x05, 0x00, 0xD6, 0x0C, 0x00, 0x00, 0x4B, 0x00, 0xD6, 0x0C });
 std::vector<BYTE> NothingNew(std::vector<BYTE> r) {
     r[1] = 0x00;
     return r;
@@ -317,6 +324,29 @@ int main() {
             CHECK(s.percent == 69 && s.charging && !s.asleep && s.note.empty());
             CHECK(s.via == L"USB cable" && s.key == L"audeze:maxwell" && s.name == L"Audeze Maxwell");
         }
+    }
+
+    // The dongle then names itself "... XBOX Dongle" and only repeats its stale buffer (length 0, 76%).
+    current = "headset off on its cable, dongle plugged in: the cable's charging level, the dongle untouched";
+    {
+        Forget();
+        ResetIo();
+        frames.clear();
+        frames[L"cable"] = { kCapturedXboxCableOff, NothingNew(kCapturedXboxCableOff) };
+        frames[L"xbox"] = { NothingNew(kCapturedXbox) };
+        products[L"xbox"] = L"Audeze Maxwell XBOX Dongle";
+        products[L"cable"] = L"Audeze Maxwell XBOX Headset";
+        PollContext ctx;
+        ctx.colls = { Vendor(kXbox, L"xbox"), Vendor(kXboxCable, L"cable") };
+        for (auto& c : ctx.colls) c.iface = -1;
+        PollAudeze(ctx);
+        CHECK(ctx.out.size() == 1 && AllClaimed(ctx));
+        CHECK(opened.size() == 1 && opened[0] == L"cable");
+        if (ctx.out.size() == 1) {
+            const auto& s = ctx.out[0];
+            CHECK(s.percent == 77 && s.charging && !s.asleep && s.note.empty() && s.via == L"USB cable");
+        }
+        products.clear();
     }
 
     current = "cable wins over the dongle and means charging; a silent cable is never called stuck";

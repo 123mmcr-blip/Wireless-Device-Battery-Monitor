@@ -69,8 +69,21 @@ the cable:
 Audeze Maxwell  [USB cable]  75%, charging   (audeze:maxwell)
 ```
 
-Switching the headset off while it is on the cable was not tested on the Xbox
-model.
+With the headset then switched off, cable and dongle still plugged in, the
+dongle re-enumerated without its audio interfaces and named itself
+`Audeze Maxwell XBOX Dongle`. It answered the query only with frames of length
+0 that still held its last result (76%), so the driver leaves it alone. The
+cable kept answering while the headset was off and charging, after three `5C`
+notifications:
+
+```
+07 25 00 05 5C 03 00 80 2C 03 05 5C 03 00 80 2C 01 05 5C 03 00 80 2C 00
+05 5B 03 00 D6 0C 00 05 5D 05 00 D6 0C 00 00 4D ...
+```
+
+`--list` printed `Audeze Maxwell  [USB cable]  77%, charging`: a switched-off
+headset on its cable is shown with the level it is charging at, as HaloBattery
+measured on the PC model.
 
 ## Protocol
 
@@ -117,9 +130,11 @@ level read over the cable is shown as charging.
 ## Headset switched off
 
 With no headset linked, the dongle renames itself: `Audeze Maxwell Dongle` (PC)
-or `Audeze Maxwell XBOX Dongle` (Xbox), instead of `Audeze Maxwell HID`. It then
-still answers with the last level it holds, so the driver does not ask it, and
-the headset leaves the tray like any switched-off device.
+or `Audeze Maxwell XBOX Dongle` (Xbox), instead of `Audeze Maxwell HID`; the
+Xbox dongle also drops its audio interfaces (seen above). It then still answers
+with the last level it holds, so the driver does not ask it, and the headset
+leaves the tray like any switched-off device. On its cable a switched-off
+headset keeps answering, and is shown charging.
 
 Right after the headset is switched on, its first reading can be 0%
 (measured on the Xbox dongle in HaloBattery). A 0% in the first 90 seconds is
@@ -159,7 +174,8 @@ is never called stuck.
 `make test` includes `tests/audeze_driver_test.cpp`, which links the production
 driver against a simulated HID transport. It checks the exact request, the
 captured Xbox frames above (the new result wins over the leftover one; the
-cable in both its composite and HID-only layouts), levels
+cable in both its composite and HID-only layouts, and switched off with the
+renamed dongle beside it), levels
 that arrive late or split across frames, an acknowledgement on its own, the
 stuck dongle (asleep once, then the advice, cleared by an answer or an unplug),
 the renamed dongle with the headset off, failed reads and writes, the power-on
