@@ -180,6 +180,7 @@ const AeroxModel kAerox[] = {
     { 0x1890, L"SteelSeries Aerox 3 Wireless Gen 2", false, true },
     { 0x1892, L"SteelSeries Aerox 3 Wireless Gen 2", true, true },
     { 0x1852, L"SteelSeries Aerox 5 Wireless", false, false },
+    { 0x1860, L"SteelSeries Aerox 5 Wireless Diablo IV Edition", false, false },  // untested hardware
     { 0x1854, L"SteelSeries Aerox 5 Wireless", true, false },
     { 0x1858, L"SteelSeries Aerox 9 Wireless", false, false },
     { 0x185A, L"SteelSeries Aerox 9 Wireless", true, false },

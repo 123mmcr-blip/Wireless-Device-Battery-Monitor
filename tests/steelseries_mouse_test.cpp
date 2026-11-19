@@ -108,6 +108,7 @@ int main() {
         { 0x1878, false, L"SteelSeries Aerox 3 Wireless CS2 Dragon Lore Edition" },
         { 0x187A, true, L"SteelSeries Aerox 3 Wireless CS2 Dragon Lore Edition" },
         { 0x1852, false, L"SteelSeries Aerox 5 Wireless" },
+        { 0x1860, false, L"SteelSeries Aerox 5 Wireless Diablo IV Edition" },
         { 0x1854, true, L"SteelSeries Aerox 5 Wireless" },
         { 0x1858, false, L"SteelSeries Aerox 9 Wireless" },
         { 0x185A, true, L"SteelSeries Aerox 9 Wireless" },
@@ -177,6 +178,6 @@ int main() {
     CHECK(writes == 0);
     writeOk = true;
     ExpectNothing(0x1838, 0xD2, {});  // receiver never answers
-    std::puts("SteelSeries mouse tests passed (step and Gen 2 layouts, 12 models, USB/wireless, battery bounds, "
+    std::puts("SteelSeries mouse tests passed (step and Gen 2 layouts, 13 models, USB/wireless, battery bounds, "
               "charging, off/asleep left out, echo filtering, resend, receiver NACK, I/O failures).");
 }
