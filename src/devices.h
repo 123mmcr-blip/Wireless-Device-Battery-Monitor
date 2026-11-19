@@ -2,7 +2,7 @@
 #include <string>
 #include <vector>
 
-enum class DeviceKind { Other, Mouse, Headset, Keyboard, Gamepad, Phone };
+enum class DeviceKind { Other, Mouse, Headset, Keyboard, Gamepad, Phone, Microphone };
 
 // One battery-powered device, as seen during a single poll.
 struct DeviceStatus {
@@ -15,6 +15,7 @@ struct DeviceStatus {
     std::wstring levelText;    // set when the device only reports coarse levels ("Low", "Full"...)
     std::wstring note;         // advice shown while there is no level (an English phrase, translated by the UI)
     bool charging   = false;
+    bool full       = false;   // on power and fully charged (charging may also be set)
     bool asleep     = false;   // receiver answered but the device is sleeping (keep last value)
     bool connected  = true;    // false: receiver present, device switched off (hidden)
     int  millivolts = 0;       // battery voltage when reported (0 = unknown)
