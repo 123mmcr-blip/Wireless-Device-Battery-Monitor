@@ -25,4 +25,3 @@ int main(){
  }
  states={{0x02D5,{false,0,false}},{0x02D7,{false,0,false}}};PollContext c;c.colls={Coll(0x02D5),Coll(0x02D7)};PollRazer(c);assert(c.out.size()==1&&!c.out[0].connected&&c.out[0].percent==-1);puts("Razer connection tests passed");
 }
-
