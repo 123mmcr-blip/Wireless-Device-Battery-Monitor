@@ -154,6 +154,7 @@ void PollNothingEar(PollContext& ctx); // Nothing / CMF Ear earbuds (Bluetooth R
 void PollAkko(PollContext& ctx);       // Akko V9 Dash Pro mouse (38EE:000C, FF1C:0092)
 void PollMoondrop(PollContext& ctx);   // MOONDROP GM01 Pro headset (WalkPlay 2.4 GHz dongle)
 void PollAlienware(PollContext& ctx);  // Alienware AW920H headset on its 2.4 GHz dongle (413C:A515)
+void PollPressPlayIcarus(PollContext& ctx);  // ICARUS V2 Nearlink on its 7768:6434 receiver
 void PollScyrox(PollContext& ctx);        // Scyrox V12M on its 2.4 GHz receiver (395A:0006), read-only profile read
 // Fallbacks.
 void PollHeadsetControl(PollContext &ctx); // only if headsetcontrol.exe is installed
