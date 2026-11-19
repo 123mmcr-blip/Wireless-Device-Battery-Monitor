@@ -1,8 +1,9 @@
 // SONiX keyboards on their 2.4 GHz dongle: AJAZZ AK820 MAX ("AJAZZ AK820 MAX 2.4G", 05AC:024F, tested),
 // AULA F108 Pro (same 05AC:024F dongle), AJAZZ AK980 V2 (0C45:FEFE) and AJAZZ AK820 Pro (0C45:FDFD,
 // some units ship a 0C45:FEFE "2.4G Dongle"). The 05AC dongle reuses Apple's vendor id, so the dongles
-// are also matched by their vendor collection: interface 3, usage page FF60 / usage 61, 33-byte input
-// and output reports (report id 0 + 32 bytes).
+// are also matched by their vendor collection: usage page FF60 / usage 61, 33-byte input
+// and output reports (report id 0 + 32 bytes). These dongles require interface 3;
+// EPOMAKER P75 (342D:E479, request #2525, hardware untested) uses interface 1.
 //   request [20 01 00 ... sum]          sum = byte sum of the 31 bytes before it
 //   reply   [20 01 00 level ...]        level in percent
 // A reply is recognised by its first three bytes (the echoed command), as the AK820 Pro tools do; its
@@ -17,7 +18,14 @@
 
 namespace {
 
-const std::pair<USHORT, USHORT> kDongles[] = { { 0x05AC, 0x024F }, { 0x0C45, 0xFEFE }, { 0x0C45, 0xFDFD } };
+// iface < 0: match the exact vendor collection on any interface.
+struct Dongle { USHORT vid, pid; int iface; };
+const Dongle kDongles[] = {
+    { 0x05AC, 0x024F, 3 },
+    { 0x0C45, 0xFEFE, 3 },
+    { 0x0C45, 0xFDFD, 3 },
+    { 0x342D, 0xE479, -1 },  // EPOMAKER P75 (hardware untested)
+};
 
 const size_t kLen = 32;  // payload bytes after the report id; the last one is the checksum
 
@@ -58,11 +66,11 @@ std::wstring KeyboardName(const HidColl& c) {
 }  // namespace
 
 void PollSonix(PollContext& ctx) {
-    for (auto [vid, pid] : kDongles) {
-        if (ctx.IsClaimed(vid, pid)) continue;
-        for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) {
-                 return c.iface == 3 && c.page() == 0xFF60 && c.usage() == 0x0061 && c.outLen() == 1 + kLen &&
-                        c.inLen() == 1 + kLen;
+    for (const Dongle& m : kDongles) {
+        if (ctx.IsClaimed(m.vid, m.pid)) continue;
+        for (const HidColl* c : ctx.Find(m.vid, m.pid, [&m](const HidColl& c) {
+                 return (m.iface < 0 || c.iface == m.iface) && c.page() == 0xFF60 && c.usage() == 0x0061 &&
+                        c.outLen() == 1 + kLen && c.inLen() == 1 + kLen;
              })) {
             HidDev d;
             if (!d.Open(*c)) continue;
@@ -71,14 +79,14 @@ void PollSonix(PollContext& ctx) {
             if (level < 0) level = QueryLevel(d);
             if (level < 0) continue;
             DeviceStatus s;
-            s.key = L"sonix:" + Hex4(vid) + L":" + Hex4(pid);
+            s.key = L"sonix:" + Hex4(m.vid) + L":" + Hex4(m.pid);
             s.name = KeyboardName(*c);
             s.kind = DeviceKind::Keyboard;
             s.via = L"2.4 GHz receiver";
             s.connected = level >= 1 && level <= 100;  // 0: keyboard off, out of range or in another mode
             if (s.connected) s.percent = level;
             s.graceSec = 1800;  // keep the last value if a sleeping keyboard stops answering
-            ctx.Add(s, vid, pid);
+            ctx.Add(s, m.vid, m.pid);
             break;
         }
     }
