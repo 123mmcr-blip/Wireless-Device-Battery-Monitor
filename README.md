@@ -88,6 +88,8 @@ Turn off **Record battery history** in the menu to stop saving readings; what wa
 
 ## Supported devices
 
+Redragon M602-KS battery percentage was verified on the 2.4 GHz receiver (`258A:002F`).
+
 | Vendor | Devices | How |
 |---|---|---|
 | **NuPhy** | WH80 over USB cable (`19F5:A011`) or Bluetooth (`19F5:324A`), hardware-tested | USB: read-only NuPhyIO battery query; Bluetooth: Windows battery level with keyboard classification ([protocol notes](docs/nuphy.md)) |

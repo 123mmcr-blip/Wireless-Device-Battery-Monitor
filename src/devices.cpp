@@ -46,6 +46,7 @@ std::vector<DeviceStatus> PollAllDevices() {
                             return std::find(ignored.begin(), ignored.end(), std::make_pair(c.vid, c.pid)) != ignored.end();
                         }),
                         ctx.colls.end());
+    PollSinowealthReceiver(ctx);
     PollGlorious(ctx);
     PollAula(ctx);       // before Kysona (shares the 3554 vendor id) and SONiX (shares 05AC:024F)
     PollAulaMouse(ctx);
