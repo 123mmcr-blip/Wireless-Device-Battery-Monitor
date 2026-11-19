@@ -119,7 +119,7 @@ int main() {
     assert(!updates::VerifyFile(file, correct, 3));
     assert(DeleteFileW(file));
     assert(!updates::VerifyFile(file, correct, 3));
-    for (const auto* argument : { L"", L"simple", L"C:\\Program Files\\Wireless Battery\\", L"spaces and \"quotes\"",
+    for (const auto* argument : { L"", L"simple", L"C:\\Program Files\\BatteryHub\\", L"spaces and \"quotes\"",
                                   L"C:\\Unicode-\u00e7\\file.exe", L"slashes\\\\\"before quote\\" }) {
         std::wstring command = L"test.exe " + updates::QuoteArgument(argument);
         int count = 0;
