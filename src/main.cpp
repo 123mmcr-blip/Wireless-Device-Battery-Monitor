@@ -1017,8 +1017,19 @@ void ShowMenu() {
     POINT pt;
     GetCursorPos(&pt);
     SetForegroundWindow(g_hwnd);
-    UINT cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON | (i18n::Rtl() ? TPM_LAYOUTRTL : 0), pt.x, pt.y, 0,
-                              g_hwnd, nullptr);
+    // Opened from the taskbar, the menu must not overlap it: Windows only keeps a menu inside the monitor,
+    // so its last items (Exit) ended up under the taskbar. Excluding the taskbar's rectangle makes Windows
+    // open the menu above it (below / beside it for a top or side taskbar).
+    TPMPARAMS tpm{ sizeof(tpm) };
+    HWND under = GetAncestor(WindowFromPoint(pt), GA_ROOT);
+    wchar_t cls[32] = {};
+    if (under) GetClassNameW(under, cls, ARRAYSIZE(cls));
+    bool fromTaskbar = !wcscmp(cls, L"Shell_TrayWnd") || !wcscmp(cls, L"Shell_SecondaryTrayWnd");
+    if (fromTaskbar) GetWindowRect(under, &tpm.rcExclude);
+    bool sideBar = fromTaskbar && tpm.rcExclude.bottom - tpm.rcExclude.top > tpm.rcExclude.right - tpm.rcExclude.left;
+    UINT cmd = TrackPopupMenuEx(m, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON | (sideBar ? TPM_HORIZONTAL : TPM_VERTICAL) |
+                                       (i18n::Rtl() ? TPM_LAYOUTRTL : 0),
+                                pt.x, pt.y, g_hwnd, fromTaskbar ? &tpm : nullptr);
     PostMessageW(g_hwnd, WM_NULL, 0, 0);
     DestroyMenu(m);
     switch (cmd) {
