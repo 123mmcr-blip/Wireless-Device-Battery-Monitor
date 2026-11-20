@@ -19,6 +19,7 @@ DRIVERS := \
     src/drivers/zebronics.cpp \
     src/drivers/keychron.cpp \
     src/drivers/ninjutso.cpp \
+    src/drivers/rapoo.cpp \
     src/drivers/glorious.cpp \
     src/drivers/kysona.cpp \
     src/drivers/logitech.cpp \

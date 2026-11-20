@@ -28,6 +28,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollCoolerMaster(ctx);
     PollFinalmouse(ctx);     // UltralightX / Starlight X dongles
     PollNinjutso(ctx);       // Sora V2 / Ten on their 1K receivers
+    PollRapoo(ctx);          // Rapoo VT gaming mice (passive status reports)
     return ctx.out;
 }
 
