@@ -197,5 +197,5 @@ int main() {
     ctx = Poll(core, Dongle(Link(1), Battery(40)));
     assert(ctx.out.size() == 1 && ctx.out[0].connected && ctx.out[0].percent < 0);
 
-    std::puts("HyperX Haste 2 driver tests passed (level, charging, missing link reply, link down, power-on window, filtering).");
+    std::puts("HyperX Haste original and Haste 2 driver tests passed (levels, charging, link states, malformed and missing replies, strict matching).");
 }
