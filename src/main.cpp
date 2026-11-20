@@ -45,7 +45,9 @@ constexpr UINT ALERT_ICON_ID = 2;
 
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
-    ID_BRAND_COLORS, ID_STACKED, ID_LEFT_SIDE,
+    ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_LEFT_SIDE,
+    ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
+    ID_UPDATE = 200, ID_AUTO_UPDATE,
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
     ID_DEVICE_FIRST = 1000
@@ -76,6 +78,7 @@ bool g_widgetBackground = false;  // draw a plate behind the taskbar text (trans
 bool g_stacked = false;      // icon above the percentage (menu option)
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
 bool g_leftSide = false;     // show the taskbar widget on the left side (menu option)
+std::atomic<DWORD> g_pollIntervalMs{ 60 * 1000 };  // set from the menu, read by the worker thread
 
 struct TrayEntry {
     UINT uid = 0;
@@ -284,6 +287,14 @@ bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
 void SaveBrandColors(bool on) { SaveBoolSetting(L"BrandColors", on); }
 bool LoadLeftSide() { return LoadBoolSetting(L"ShowOnLeft", false); }
 void SaveLeftSide(bool on) { SaveBoolSetting(L"ShowOnLeft", on); }
+DWORD LoadPollSeconds() {
+    DWORD v = 60, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"PollIntervalSeconds", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return std::clamp<DWORD>(v, 30, 24 * 60 * 60);
+}
+void SavePollSeconds(DWORD seconds) {
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"PollIntervalSeconds", REG_DWORD, &seconds, sizeof(seconds));
+}
 
 bool AutostartEnabled() {
     wchar_t buf[MAX_PATH * 2];
@@ -734,6 +745,12 @@ void SetLeftSide(bool on) {
     g_leftSide = on;
     SaveLeftSide(on);
     widget::SetLeftSide(on);
+}
+
+void SetPollSeconds(DWORD seconds) {
+    g_pollIntervalMs = seconds * 1000;
+    SavePollSeconds(seconds);
+    SetEvent(g_refreshEvt);  // poll now, so the new interval starts right away
 }
 
 void ToggleHidden(const std::wstring& key) {
