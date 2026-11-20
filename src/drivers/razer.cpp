@@ -7,6 +7,7 @@
 // Use documented keyboard transaction ids; probe the known ids for other models.
 // Reference: github.com/openrazer/openrazer (protocol documentation in its driver sources).
 #include "drivers.h"
+#include <map>
 
 namespace {
 
@@ -114,6 +115,21 @@ DeviceKind Kind(const std::vector<HidColl>& colls, USHORT vid, USHORT pid) {
 }  // namespace
 
 void PollRazer(PollContext& ctx) {
+    struct LastReading { std::wstring path; DeviceStatus status; };
+    static std::map<USHORT, LastReading> lastGood;
+    for (auto it = lastGood.begin(); it != lastGood.end();) {
+        bool present = false;
+        for (const auto& c : ctx.colls)
+            if (c.path == it->second.path) { present = true; break; }
+        if (present) { ++it; continue; }
+        // A removed receiver is different from a mouse sleeping behind it.
+        DeviceStatus gone = it->second.status;
+        gone.connected = false;
+        gone.percent = -1;
+        gone.charging = false;
+        ctx.out.push_back(gone);
+        it = lastGood.erase(it);
+    }
     std::vector<std::wstring> seenNames;
     for (auto [vid, pid] : ctx.Products(0x1532)) {
         for (const HidColl* c : ctx.Find(vid, pid, [](const HidColl& c) { return c.featLen() == 91; })) {
@@ -142,11 +158,15 @@ void PollRazer(PollContext& ctx) {
             s.via = L"Razer receiver";
             s.graceSec = 120;  // retain the last reading briefly when Synapse prevents a valid reply
             if (res == Rz::Offline) {
-                s.connected = false;
+                // Receiver timeouts cannot distinguish sleep from the power switch.
+                // Keep a previously seen mouse dimmed while its receiver remains plugged in.
+                s.asleep = s.kind == DeviceKind::Mouse && lastGood.count(pid) != 0;
+                s.connected = s.asleep;
             } else {
                 s.percent = Clamp100((args[1] * 100 + 127) / 255);
                 std::vector<BYTE> ch;
                 if (Command(d, tid, 0x07, 0x84, 0x02, ch) == Rz::Ok) s.charging = ch[1] == 1;
+                if (s.kind == DeviceKind::Mouse) lastGood[pid] = { c->path, s };
             }
             // A wireless mouse plugged in for charging shows up twice (cable + dongle); keep one.
             bool dup = false;
@@ -156,8 +176,11 @@ void PollRazer(PollContext& ctx) {
                 ctx.Add(s, vid, pid);
             } else {
                 ctx.Claim(vid, pid);
-                for (auto& o : ctx.out)
-                    if (o.name == s.name && s.charging) o.charging = true;
+                for (auto& o : ctx.out) {
+                    if (o.name != s.name) continue;
+                    if (s.percent >= 0 && o.percent < 0) o = s;
+                    else if (s.charging) o.charging = true;
+                }
             }
             break;
         }
