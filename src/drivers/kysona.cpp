@@ -11,12 +11,14 @@
 // protocol on vendor collection FF02:0002; its receivers expose several other 17-byte vendor collections
 // (FF03..FF06), so FF02:0002 is tried first. IDs and protocol from github.com/S1berla/vxe-r1-pro-max-battery,
 // github.com/orcunturkol/BatteryTray (PR #1) and HeyOkay/HaloBattery issue #273 (verified on F505).
+// The R1 Pro's USB cable is 373B:1272 (issue #364) and uses the same protocol under ATK's vendor id.
 // Reference: Linux drivers/hid/hid-kysona.c (Lode Willems) and the hid-pulsar patch discussion;
 // Redragon ids from github.com/EliottV17/redragon-battery-omarchy and github.com/pingpingjinping/g49-web-control.
 // The older dual-mode M913 on the Areson 25A7:FA07 / FA08 receiver is handled by areson.cpp.
 #include "drivers.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 
@@ -24,17 +26,21 @@ namespace {
 bool IsRedragon(USHORT vid, USHORT pid) { return vid == 0x3554 && (pid == 0xF55D || pid == 0xF5D5 || pid == 0xF55E); }
 
 bool IsVxeR1(USHORT vid, USHORT pid) {
-    return vid == 0x3554 &&
-           (pid == 0xF58A || pid == 0xF58C || pid == 0xF58E || pid == 0xF58F || pid == 0xF505 || pid == 0xF506);
+    if (vid == 0x3554)
+        return pid == 0xF58A || pid == 0xF58C || pid == 0xF58E || pid == 0xF58F || pid == 0xF505 || pid == 0xF506;
+    // The R1 Pro's USB cable enumerates under ATK's vendor id (issue #364); it speaks the same protocol.
+    return vid == 0x373B && pid == 0x1272;
 }
 
-// A VXE R1 cable reports under its receiver's id, so the mouse is one entry on either connection.
+// A VXE R1 cable reports under its receiver's key, so the mouse stays one entry on either connection:
+// charging updates the receiver's entry instead of adding a second one during its grace period (#2259).
 // F58A / F58C verified; the other pairs follow the order PR #69 lists them in.
-USHORT KeyPid(USHORT vid, USHORT pid) {
-    if (vid == 0x3554 && pid == 0xF58C) return 0xF58A;
-    if (vid == 0x3554 && pid == 0xF58F) return 0xF58E;
-    if (vid == 0x3554 && pid == 0xF506) return 0xF505;
-    return pid;
+std::pair<USHORT, USHORT> KeyIds(USHORT vid, USHORT pid) {
+    if (vid == 0x3554 && pid == 0xF58C) return { 0x3554, 0xF58A };
+    if (vid == 0x3554 && pid == 0xF58F) return { 0x3554, 0xF58E };
+    if (vid == 0x3554 && pid == 0xF506) return { 0x3554, 0xF505 };
+    if (vid == 0x373B && pid == 0x1272) return { 0x3554, 0xF58A };
+    return { vid, pid };
 }
 
 // HECATE (Edifier) also sells headsets under 35BB (G2 Wireless 7.1: dongles A009 / A209) with a 64-byte
@@ -45,7 +51,8 @@ bool IsHecateMouse(USHORT pid) { return pid == 0xD3FA || pid == 0xD3FB || pid ==
 bool IsCable(USHORT vid, USHORT pid) {
     bool hecate_cable = vid == 0x35BB && (pid == 0xD3FA || pid == 0xD3FC || pid == 0xD3FD);
     return (vid == 0x33E4 && GWolvesIsCable(pid)) || hecate_cable ||
-           (vid == 0x3554 && (pid == 0xF55E || pid == 0xF58C || pid == 0xF58F || pid == 0xF506));
+           (vid == 0x3554 && (pid == 0xF55E || pid == 0xF58C || pid == 0xF58F || pid == 0xF506)) ||
+           (vid == 0x373B && pid == 0x1272);
 }
 
 BYTE Checksum(const BYTE* b) {
@@ -135,7 +142,8 @@ void PollKysona(PollContext& ctx) {
                     ctx.Claim(vid, pid);
                     break;
                 }
-                s.key = L"kysona:" + Hex4(vid) + L":" + Hex4(KeyPid(vid, pid));
+                auto [keyVid, keyPid] = KeyIds(vid, pid);
+                s.key = L"kysona:" + Hex4(keyVid) + L":" + Hex4(keyPid);
                 s.name = CleanName(HidProduct(*c), vid, pid);
                 s.kind = KindFromCollections(ctx.colls, vid, pid);
                 if (s.kind == DeviceKind::Other) s.kind = DeviceKind::Mouse;
