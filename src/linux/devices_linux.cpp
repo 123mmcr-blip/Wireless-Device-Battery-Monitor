@@ -27,6 +27,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollPlayStation(ctx);    // DualShock 4 / DualSense over USB or Bluetooth HID
     PollCoolerMaster(ctx);
     PollFinalmouse(ctx);     // UltralightX / Starlight X dongles
+    PollNinjutso(ctx);       // Sora V2 / Ten on their 1K receivers
     return ctx.out;
 }
 
