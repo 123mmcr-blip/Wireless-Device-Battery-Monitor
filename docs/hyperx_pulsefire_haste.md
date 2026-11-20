@@ -4,9 +4,10 @@ This is **not** the Pulsefire Haste 2 wireless protocol. The original device use
 
 ## Hardware identification
 
-- `03F0:028E`: original Haste Wireless 2.4 GHz receiver (identified by the OpenMouse project; not yet tested on this PC).
-- `03F0:048E`: original Haste Wireless over USB cable (observed on LaNae, Windows, 2026-11-19).
+- `03F0:028E`: original Haste Wireless 2.4 GHz receiver (tested on LaNae, Windows, 2026-11-19).
+- `03F0:048E`: original Haste Wireless over USB cable (tested on LaNae, Windows, 2026-11-19).
 - On `048E`, `BatteryHub.exe --dump` reported interface 2, usage `FF00:0001`, input/output lengths 65 bytes, feature length 0; USB reported product `HyperX Pulsefire Haste Wireless`.
+- The `028E` receiver has the same interface 2, `FF00:0001`, 65-byte input/output report sizes, and no feature report.
 
 ## Battery query
 
@@ -21,5 +22,5 @@ On the vendor collection (`FF00:0001`), send a 64-byte **output** payload with o
 ## Sources and validation
 
 - [OpenMouse protocol codec](https://github.com/OpenMouse-Project/mouse-protocol/blob/main/src/hyperx/index.ts) and [HID client](https://github.com/OpenMouse-Project/mouse-protocol/blob/main/src/drivers/hyperx/hid.ts), with attribution there to [open-pulsefire-haste](https://github.com/evan-razzaque/open-pulsefire-haste).
-- Real hardware confirmed: Windows device detection and HID report descriptors for `048E`. The battery command itself needs a live response and comparison with NGENUITY before submitting upstream.
-- Test both receiver and wired modes; the vendor protocol may return no battery percentage while connected by USB cable.
+- Real hardware confirmed on 2026-11-19: the `0x51` battery query returned **100%, charging and full** in wired mode (`048E`), and **100%, not charging** over the 2.4 GHz receiver (`028E`). Three consecutive wireless queries returned the same percentage.
+- A comparison with the official NGENUITY software remains pending. Also test non-100% levels and charging transitions when practical; do not claim those hardware states tested yet.
