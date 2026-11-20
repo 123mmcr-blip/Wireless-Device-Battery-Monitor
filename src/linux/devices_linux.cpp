@@ -18,6 +18,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollZebronics(ctx);      // Compx 3554:FC0A before Kysona, which also scans VID 3554
     PollGlorious(ctx);       // also G-Wolves / Hitscan (defines the shared G-Wolves model table)
     PollKysona(ctx);         // also Pulsar, ATK/VXE and other popular Chinese mice
+    PollKeychron(ctx);       // Keychron mice and trackballs
     PollLogitech(ctx);       // Unifying / Bolt / Lightspeed / Bluetooth HID++
     PollRazer(ctx);
     PollSteelSeries(ctx);
