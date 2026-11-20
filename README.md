@@ -30,7 +30,7 @@ Battery levels of your wireless mouse, headset, keyboard and controller, right o
 **On the taskbar (default):** `🎧 30%  🖱 93%` next to the notification area, drawn with the Windows icon font.
 - **Low battery:** a red number means 15% or less.
 - **Charging:** a blue ⚡ appears next to the number. Once the device is fully charged and still on power, it turns into a green ✓.
-- **Asleep:** dimmed text means the device is asleep and the last known value is shown.
+- **Asleep:** dimmed text means the device is asleep and the last known value is shown. Turn off *Dim sleeping devices* in the menu to keep that value at full brightness.
 - **Disconnected (optional):** turn on *Show disconnected devices* to display a dimmed `×` for devices whose driver explicitly reports an offline wireless link. This does not infer disconnection from a missed battery poll; the default remains to hide offline devices.
 - **Two devices of one kind:** with two mice (or two controllers...) both would get the same icon, so each one gets a tiny caption of up to 3 letters in the corner of its icon, taken from its name (`MX`, `PRO`), or a number when the names do not tell them apart. A device that is alone in its kind shows no caption.
 - **Theme:** it follows light/dark mode and DPI scaling.
@@ -400,7 +400,7 @@ the remaining vendors are planned follow-up phases.
 
 - **Crowded taskbars:** with a very full centered Windows 11 taskbar, the app buttons can reach the widget. On Windows 10 the task-button area is narrowed automatically.
 - **Phones:** read from a file Phone Link writes for the Start menu companion card, which is not a documented API and may change with Phone Link updates. The phone shows while Phone Link reports it as connected; a card older than 3 hours is shown dimmed. The card also says when the phone is charging, which shows as the charging bolt.
-- **Sleeping devices:** a device that is asleep may not answer. Its last value stays visible, dimmed. Logitech receivers drop sleeping devices from the link, so their last value is kept for 30 minutes.
+- **Sleeping devices:** a device that is asleep may not answer. Its last value stays visible, dimmed unless *Dim sleeping devices* is turned off in the menu. Logitech receivers drop sleeping devices from the link, so their last value is kept for 30 minutes.
 - **HECATE G2 Wireless 7.1 headset** (2.4 GHz dongle `35BB:A009` / `A209`): no battery query for its dongle is documented yet, so it is not read. A USB capture while the HECATE software shows the headset battery (see CONTRIBUTING.md) is the way to add it.
 - **Keychron keyboards:** with stock firmware they only report their battery over Bluetooth (shown via the Bluetooth support). Over the 2.4 GHz receiver or the cable they need firmware with the battery patch ([docs/keychron_keyboard_firmware/README.md](docs/keychron_keyboard_firmware/README.md)); updating the keyboard from Keychron Launcher removes it. Keychron mice are supported.
 - **Baseus AeQur GH02 headset:** the 2.4 GHz dongle (`10D6:4802`, Actions chip) only carries audio, media keys and the chip's firmware-update channel, not the battery. Connect the headset over Bluetooth to see its level (shown via the Bluetooth support when Windows reports one).
