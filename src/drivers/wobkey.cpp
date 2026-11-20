@@ -11,6 +11,7 @@
 // full TX/RX traffic of its "Rainy75 V2 battery query" tool.
 #include "drivers.h"
 
+#include <algorithm>
 #include <map>
 #include <memory>
 
@@ -21,6 +22,8 @@ constexpr USHORT kReceiver = 0x3071;
 constexpr USHORT kCable = 0x3075;
 constexpr USHORT kPage = 0xFF60;
 constexpr USHORT kUsage = 0x0061;
+constexpr int kPollBudgetMs = 4000;
+constexpr int kBufferedReadMs = 30;
 
 // Keep handles open between polls (like PollRapoo) so the OS buffers passive 0xBB reports arriving
 // during the 60 s refresh interval instead of missing them.
@@ -30,54 +33,67 @@ bool IsTelemetry(const std::vector<BYTE>& r) {
     return r.size() >= 6 && r[0] == 0xBE && r[1] == 0xBB && r[2] == 0x06;
 }
 
-// Drains already-buffered telemetry (keeping the newest), then waits up to 6 s for a fresh push.
-// `enable` sends the 0x93 command that switches the periodic telemetry on.
-bool ReadBattery(HidDev& d, bool enable, int& percent, bool& charging) {
+int RemainingMs(ULONGLONG deadline) {
+    const auto now = GetTickCount64();
+    return now < deadline ? static_cast<int>(deadline - now) : 0;
+}
+
+// Keep the newest queued report. If the first push (~5 s apart) misses the
+// deadline, the retained handle lets the next poll pick up the queued report.
+bool ReadBattery(HidDev& d, ULONGLONG deadline, int& percent, bool& charging) {
     auto decode = [&](const std::vector<BYTE>& r) {
         if (!IsTelemetry(r)) return false;
         percent = Clamp100(r[3]);
         charging = r[4] != 0;
         return true;
     };
-    if (enable && !d.Write({ 0x00, 0xBE, 0x93, 0x05, 0x01, 0xED })) return false;
     bool got = false;
     for (int i = 0; i < 64; i++) {
+        const int left = RemainingMs(deadline);
+        if (!left) return got;
         std::vector<BYTE> r;
-        if (d.Read(r, 30) < 0) break;
+        if (d.Read(r, std::min(kBufferedReadMs, left)) < 0) break;
         if (decode(r)) got = true;
     }
     if (got) return true;
-    ULONGLONG end = GetTickCount64() + 6000;
-    do {
-        int left = (int)((LONGLONG)end - (LONGLONG)GetTickCount64());
+    while (const int left = RemainingMs(deadline)) {
         std::vector<BYTE> r;
-        if (left <= 0 || d.Read(r, left) < 0) return false;
+        if (d.Read(r, left) < 0) return false;
         if (decode(r)) return true;
-    } while (GetTickCount64() < end);
+    }
     return false;
 }
 
 }  // namespace
 
 void PollWobkey(PollContext& ctx) {
+    // Always drop disconnected handles before a successful poll can return.
+    for (auto it = g_wobkey.begin(); it != g_wobkey.end();) {
+        const bool present = std::any_of(ctx.colls.begin(), ctx.colls.end(), [&](const HidColl& c) {
+            return c.path == it->first;
+        });
+        it = present ? std::next(it) : g_wobkey.erase(it);
+    }
+
     // The cable wins when both are connected (it powers the keyboard and stays awake).
     for (USHORT pid : { kCable, kReceiver }) {
         if (ctx.IsClaimed(kVid, pid)) continue;
         for (const HidColl* c : ctx.Find(kVid, pid, [](const HidColl& c) {
                  return c.page() == kPage && c.usage() == kUsage && c.inLen() >= 256 && c.outLen() >= 256;
              })) {
-            auto& slot = g_wobkey[c->path];
-            bool fresh = !slot;
-            if (fresh) {
-                slot = std::make_unique<HidDev>();
-                if (!slot->Open(*c)) {
-                    g_wobkey.erase(c->path);
+            const ULONGLONG deadline = GetTickCount64() + kPollBudgetMs;
+            auto slot = g_wobkey.find(c->path);
+            if (slot == g_wobkey.end()) {
+                auto device = std::make_unique<HidDev>();
+                if (!device->Open(*c)) continue;
+                const int left = RemainingMs(deadline);
+                if (!left || !device->Write({ 0x00, 0xBE, 0x93, 0x05, 0x01, 0xED }, std::min(500, left)))
                     continue;
-                }
+                slot = g_wobkey.emplace(c->path, std::move(device)).first;
             }
             int percent = -1;
             bool charging = false;
-            if (!ReadBattery(*slot, fresh, percent, charging)) continue;  // asleep/off: keep the last value
+            if (!ReadBattery(*slot->second, deadline, percent, charging)) continue;  // asleep/off: keep the last value
 
             DeviceStatus s;
             s.key = L"wobkey:rainy75v2";
@@ -91,12 +107,5 @@ void PollWobkey(PollContext& ctx) {
             if (pid == kCable) ctx.Claim(kVid, kReceiver);
             return;
         }
-    }
-    // Drop handles for collections that no longer exist.
-    for (auto it = g_wobkey.begin(); it != g_wobkey.end();) {
-        bool present = false;
-        for (const auto& c : ctx.colls)
-            if (c.path == it->first) { present = true; break; }
-        it = present ? std::next(it) : g_wobkey.erase(it);
     }
 }
