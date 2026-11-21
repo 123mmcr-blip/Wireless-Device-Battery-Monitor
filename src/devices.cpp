@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cwchar>
 
+#include "battery_history.h"
 #include "drivers/drivers.h"
 #include "report.h"
 #include "hid.h"
@@ -39,6 +40,7 @@ std::vector<std::pair<USHORT, USHORT>> IgnoredDevices() {
 
 std::vector<DeviceStatus> PollAllDevices() {
     PollContext ctx;
+    ctx.seenBefore = &battery_history::KeysAtStartup();
     ctx.colls = EnumHid();
     auto ignored = IgnoredDevices();
     if (!ignored.empty())

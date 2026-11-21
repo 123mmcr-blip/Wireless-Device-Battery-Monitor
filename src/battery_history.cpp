@@ -13,6 +13,7 @@ namespace battery_history {
 namespace {
 
 Store g_store;
+std::set<std::wstring> g_keysAtStartup;  // see KeysAtStartup()
 bool g_demo = false;
 std::wstring g_file;
 HWND g_view = nullptr;
@@ -556,7 +557,11 @@ void Initialize(bool demo) {
         g_file = HistoryPath();
         Load();
     }
+    g_keysAtStartup.clear();
+    for (const auto& s : g_store.samples) g_keysAtStartup.insert(s.key);
 }
+
+const std::set<std::wstring>& KeysAtStartup() { return g_keysAtStartup; }
 
 void Observe(const std::wstring& key, int percent, bool charging) {
     if (g_demo) return;
