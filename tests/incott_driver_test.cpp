@@ -243,6 +243,30 @@ int main() {
     s = Find(ctx, L"incott:522C");
     CHECK(s && s->asleep && s->percent == -1 && Count(0x89) == 0);
 
+    ctx = Poll({});
+
+    // 13. Data cable plugged in, dongle still in (captured on the user's G23 Pro): the cable answers 89 with
+    //     91% and no charging bit (byte 3 = 02 is the connection mode), while the mouse pushes 91% with the
+    //     charging bit a moment later; the dongle pushes nothing. The first poll must wait for the push
+    //     rather than show the feature reading, and must not show the dongle.
+    const std::vector<BYTE> cableInfo = { 0x09, 0x8F, 0x01, 0x02, 0x00, 0xF1, 0x00, 0x00, 0x00 };
+    const std::vector<BYTE> cableFeature91 = { 0x09, 0x89, 0x5B, 0x02, 0x00, 0x04, 0x00, 0x00, 0x5A };
+    const std::vector<BYTE> cablePush91 = Pad({ 0x09, 0xDB, 0x40, 0x04, 0x00, 0x3F, 0x3F, 0x21 }, 33);
+    fakes[L"rx"] = FakeColl{ { { 0x8F, kInfo8k }, { 0x89, kFeature58 } }, {} };
+    fakes[L"cable"] = FakeColl{ { { 0x8F, cableInfo }, { 0x89, cableFeature91 } }, {} };
+    fakes[L"cable"].lateAfterReads = 5;
+    fakes[L"cable"].late = cablePush91;
+    t0 = GetTickCount64();
+    ctx = PollWithin({ rx, cable }, 6000);
+    s = Find(ctx, L"incott:622C");
+    CHECK(s && s->percent == 91 && s->charging && s->connected && s->via == L"USB cable");
+    CHECK(!Find(ctx, L"incott:522C") && Count(0x89) == 0);
+    CHECK(GetTickCount64() - t0 < 2500);  // the cable's push ends its wait; the dongle adds none
+    // Next poll: the cable keeps pushing, the dongle stays silent.
+    fakes[L"cable"].inputs = { cablePush91 };
+    ctx = Poll({ rx, cable });
+    CHECK(ctx.out.size() == 1 && Find(ctx, L"incott:622C") && Find(ctx, L"incott:622C")->charging);
+
     std::puts("incott_driver_test: all passed");
     return 0;
 }

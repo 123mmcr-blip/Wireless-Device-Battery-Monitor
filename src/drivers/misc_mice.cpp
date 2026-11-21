@@ -527,6 +527,7 @@ void PollIncott(PollContext& ctx) {
         Status push = DrainIncott(ls, 0);
         Status feature;
         Receiver receiver = Receiver::Other;
+        if (!cable && onCable && push.percent < 0) continue;  // the mouse is on its cable: no receiver duplicate
         if (push.percent < 0) {
             if (!cable) {
                 if (receiverKind == Receiver::Unknown) {
@@ -537,15 +538,14 @@ void PollIncott(PollContext& ctx) {
                 }
                 receiver = receiverKind;
             }
-            if (receiver == Receiver::EightK) {
-                if (fresh) push = DrainIncott(ls, 3000);  // just opened: give the mouse time for its next push
-            } else if (receiver != Receiver::Unknown) {  // the cable, or a receiver that forwards 89
+            // Just opened: give the mouse time for its next push. On an 8K receiver 89 is not the mouse's reading;
+            // on the cable 89 is, but only the push carries the charging bit (89 byte 3 is the connection mode).
+            if (fresh && (cable || receiver == Receiver::EightK)) push = DrainIncott(ls, 3000);
+            if (push.percent < 0 && (cable || receiver == Receiver::Other))  // the cable, or a receiver that forwards 89
                 IncottRead(colls, 0x89, [&feature](const std::vector<BYTE>& r) { return ParseStatusFeature(r, feature); });
-            }
         }
         Reading reading = Choose(cable, receiver, push, feature);
         if (!reading.show) continue;
-        if (!cable && onCable && push.percent < 0) continue;  // the mouse is on its cable: no receiver duplicate
         DeviceStatus s;
         s.key = L"incott:" + Hex4(pid);
         s.name = L"Incott mouse";  // the ids are shared by the G23 / G23 V2 and the G24
