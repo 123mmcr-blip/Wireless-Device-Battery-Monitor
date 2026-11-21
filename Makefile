@@ -88,6 +88,8 @@ test: test-update-core test-update-win test-update-signature
 	./build/mchose_modern_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/mchose_v9pro_driver_test.cpp src/drivers/mchose_v9pro.cpp -o build/mchose_v9pro_driver_test.exe
 	./build/mchose_v9pro_driver_test.exe
+	$(CXX) $(CXXFLAGS) tests/mchose_driver_test.cpp src/drivers/mchose.cpp -o build/mchose_driver_test.exe
+	./build/mchose_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/vgn_driver_test.cpp src/drivers/vgn.cpp -o build/vgn_driver_test.exe
 	./build/vgn_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/beiying_driver_test.cpp src/drivers/eweadn.cpp -o build/beiying_driver_test.exe
