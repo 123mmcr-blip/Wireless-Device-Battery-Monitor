@@ -6,6 +6,7 @@
 #include <uiautomation.h>
 #include <algorithm>
 #include <climits>
+#include <cmath>
 
 namespace {
 
@@ -15,6 +16,7 @@ bool g_light, g_hover;
 bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
 bool g_stacked;     // icon above the percentage (menu option, PR #525)
 bool g_showPercentSign = true;  // '%' after numeric levels (menu option, PR #1386)
+bool g_ringStyle;   // device icon inside a ring that fills with the charge (menu option, PR #110)
 bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
 bool g_makeRoom = true;  // step past other apps' widgets in the taskbar instead of covering them
 widget::VerticalPlace g_place = widget::VerticalPlace::Auto;  // where the column sits on such a taskbar (menu option)
@@ -576,6 +578,32 @@ struct Piece {
     int px = INT_MIN, py = 0;  // fixed top-left position (stacked and vertical layouts); INT_MIN = flow left to right
 };
 
+// Coverage masks for a ring of diameter d (PR #110): the full circle (track) and the arc that starts at
+// 12 o'clock and runs clockwise over `fraction` of it. 3x3 supersampled for smooth edges.
+void RingMasks(int d, double stroke, double fraction, Mask& track, Mask& arc) {
+    const double kTwoPi = 6.283185307179586;
+    track.w = track.h = arc.w = arc.h = d;
+    track.a.assign((size_t)d * d, 0);
+    arc.a.assign((size_t)d * d, 0);
+    double R = d / 2.0, inner = R - stroke;
+    for (int y = 0; y < d; y++)
+        for (int x = 0; x < d; x++) {
+            int t = 0, a = 0;
+            for (int sy = 0; sy < 3; sy++)
+                for (int sx = 0; sx < 3; sx++) {
+                    double px = x + (sx + 0.5) / 3 - R, py = y + (sy + 0.5) / 3 - R;
+                    double r = std::sqrt(px * px + py * py);
+                    if (r > R || r < inner) continue;
+                    t++;
+                    double ang = std::atan2(px, -py);
+                    if (ang < 0) ang += kTwoPi;
+                    if (ang <= fraction * kTwoPi) a++;
+                }
+            track.a[(size_t)y * d + x] = (BYTE)(t * 255 / 9);
+            arc.a[(size_t)y * d + x] = (BYTE)(a * 255 / 9);
+        }
+}
+
 // Three arrangements of the same pieces:
 //  * normal: "[icon] 30%  [icon] 93%" in one row (unchanged default)
 //  * stacked (menu option, from PR #525): each device's icon above its percentage, to save width;
@@ -591,6 +619,9 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     HFONT bolt = MakeFont(Px(11), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets");
     HFONT text = MakeFont(Px(13), FW_NORMAL, L"Segoe UI Variable Text", L"Segoe UI", Px(12));
     HFONT caption = MakeFont(std::max(8, Px(7)), FW_SEMIBOLD, L"Segoe UI Variable Text", L"Segoe UI");  // never under 8 px
+    // Ring style (PR #110) is drawn in the normal one-row layout only; stacked and vertical keep the text.
+    const bool ring = g_ringStyle && !g_stacked && barH <= barW;
+    HFONT ringIcons = ring ? MakeFont(Px(11), FW_NORMAL, L"Segoe Fluent Icons", L"Segoe MDL2 Assets") : nullptr;
 
     std::vector<Piece> out;
     struct Slot { int icon, label, bolt; };  // indices of one device's pieces
@@ -599,6 +630,24 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     for (size_t i = 0; i < g_items.size(); i++) {
         const auto& it = g_items[i];
         int a = it.dim ? 120 : 255;
+        if (ring) {
+            // The arc is the charge: red when low, blue while charging; the faint full circle is the track.
+            int d = Px(28);
+            d += d & 1;  // even, so the ring and the icon share an exact centre
+            Mask track, arc;
+            RingMasks(d, std::max(2.0, d / 13.0), it.percent >= 0 ? it.percent / 100.0 : 0.0, track, arc);
+            int base = (int)out.size();
+            out.push_back({ std::move(track), fg, a * (g_light ? 45 : 60) / 255, i + 1 < g_items.size() ? Px(8) : 0 });
+            Piece arcPiece{ std::move(arc), it.charging ? charge : it.low ? red : fg, a, 0 };
+            arcPiece.anchor = base;
+            out.push_back(std::move(arcPiece));
+            Piece glyph{ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), ringIcons, g_light), fg, a, 0 };
+            glyph.anchor = base;
+            glyph.bx = (d - glyph.m.w) / 2;
+            glyph.by = (d - glyph.m.h) / 2;
+            out.push_back(std::move(glyph));
+            continue;
+        }
         Rgb tc = it.low ? red : fg;
         bool mark = it.charging || it.full;  // bolt while charging, green check mark once full
         size_t glyph = out.size();
@@ -634,6 +683,7 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     DeleteObject(bolt);
     DeleteObject(text);
     DeleteObject(caption);
+    if (ringIcons) DeleteObject(ringIcons);
 
     height = barH;
     const int rowGap = Px(2), barRoom = Px(5);  // barRoom: space for a brand level bar under the text
@@ -1200,6 +1250,12 @@ void SetLightTheme(bool light) {
 void SetBackground(bool on) {
     g_background = on;
     PaintAll();
+}
+
+void SetRingStyle(bool on) {
+    g_ringStyle = on;
+    PaintAll();
+    if (g_wnd) Reposition();
 }
 
 void SetShowPercentSign(bool on) {

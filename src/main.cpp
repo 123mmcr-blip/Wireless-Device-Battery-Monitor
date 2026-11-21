@@ -58,7 +58,7 @@ constexpr UINT ALERT_ICON_ID = 2;
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
-    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT, ID_PERCENT_SIGN,
+    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT, ID_PERCENT_SIGN, ID_RING_STYLE,
     ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
     ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
@@ -97,6 +97,7 @@ std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all"
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
 bool g_stacked = false;      // icon above the percentage (menu option)
 bool g_showPercentSign = true;  // include '%' in taskbar battery labels (menu option)
+bool g_ringStyle = false;  // device icon inside a battery ring (menu option, PR #110)
 bool g_makeRoom = true;      // step past other apps' taskbar widgets (menu option)
 // "Position on the taskbar": distance from the notification area in DPI-independent pixels. Stored as
 // the TaskbarOffset value the widget has always read, so a value set by hand keeps working.
@@ -414,6 +415,8 @@ bool LoadStacked() { return LoadBoolSetting(L"StackedLayout", false); }
 void SaveStacked(bool on) { SaveBoolSetting(L"StackedLayout", on); }
 bool LoadShowPercentSign() { return LoadBoolSetting(L"ShowPercentSign", true); }
 void SaveShowPercentSign(bool on) { SaveBoolSetting(L"ShowPercentSign", on); }
+bool LoadRingStyle() { return LoadBoolSetting(L"RingStyle", false); }
+void SaveRingStyle(bool on) { SaveBoolSetting(L"RingStyle", on); }
 widget::VerticalPlace LoadVerticalPlace() {
     DWORD v = 0, sz = sizeof(v);
     RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", RRF_RT_REG_DWORD, nullptr, &v, &sz);
@@ -937,6 +940,12 @@ void SetLanguage(const std::wstring& code) {
     UpdateWidget();
 }
 
+void SetRingStyle(bool on) {
+    g_ringStyle = on;
+    SaveRingStyle(on);
+    widget::SetRingStyle(on);
+}
+
 void SetShowPercentSign(bool on) {
     g_showPercentSign = on;
     SaveShowPercentSign(on);
@@ -1136,6 +1145,8 @@ void ShowMenu() {
     AppendMenuW(m, MF_STRING | (g_stacked ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_STACKED, T(L"Icons above percentages (narrower)"));
     AppendMenuW(m, MF_STRING | (g_showPercentSign ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_PERCENT_SIGN,
                 T(L"Show percent sign (%)"));
+    AppendMenuW(m, MF_STRING | (g_ringStyle ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_RING_STYLE,
+                T(L"Ring style (icon inside a battery ring)"));
     {
         HMENU sub = CreatePopupMenu();
         UINT f = MF_STRING | (g_wantWidget ? 0 : MF_GRAYED);
@@ -1296,6 +1307,7 @@ void ShowMenu() {
         case ID_BRAND_COLORS: SetBrandColors(!g_brandColors); break;
         case ID_STACKED: SetStacked(!g_stacked); break;
         case ID_PERCENT_SIGN: SetShowPercentSign(!g_showPercentSign); break;
+        case ID_RING_STYLE: SetRingStyle(!g_ringStyle); break;
         case ID_MAKE_ROOM: SetMakeRoom(!g_makeRoom); break;
         case ID_PLACE_AUTO: SetWidgetPlace(widget::VerticalPlace::Auto); break;
         case ID_PLACE_TOP: SetWidgetPlace(widget::VerticalPlace::Top); break;
@@ -1795,6 +1807,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     widget::SetStacked(g_stacked);
     g_showPercentSign = LoadShowPercentSign();
     widget::SetShowPercentSign(g_showPercentSign);
+    g_ringStyle = LoadRingStyle();
+    widget::SetRingStyle(g_ringStyle);
     g_verticalPlace = LoadVerticalPlace();
     widget::SetVerticalPlace(g_verticalPlace);
     widget::SetFarLeft(g_farLeft);

@@ -36,6 +36,8 @@ void SetBackground(bool on);
 void SetStacked(bool on);
 // Include '%' after numeric battery levels (kept across Create/Destroy).
 void SetShowPercentSign(bool on);
+// Device icon inside a ring that fills with the charge, instead of icon + percentage (kept across Create/Destroy).
+void SetRingStyle(bool on);
 // Steps past other apps' widgets in the taskbar (e.g. a network graph or a countdown) that sit where the
 // strip would go, so both stay readable (kept across Create/Destroy).
 void SetMakeRoom(bool on);
