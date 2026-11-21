@@ -51,6 +51,9 @@ bool Vertical();
 // At the left end of a Windows 11 taskbar (right of the Widgets button) instead of next to the clock, where
 // there is room; otherwise next to the clock as usual (kept across Create/Destroy).
 void SetFarLeft(bool on);
+// Just left of the taskbar apps (Start / Widgets) on a centred Windows 11 taskbar, where there is room;
+// otherwise next to the clock as usual (kept across Create/Destroy).
+void SetBeforeApps(bool on);
 // Which taskbars show the strip: L"all" (default), L"main", or the id of one other monitor from
 // OtherMonitors() (then only that monitor shows it). Kept across Create/Destroy.
 void SetMonitorChoice(const std::wstring& choice);

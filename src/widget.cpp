@@ -21,6 +21,7 @@ bool g_vertical;    // the primary taskbar is docked left or right: one block pe
 bool g_makeRoom = true;  // step past other apps' widgets in the taskbar instead of covering them
 widget::VerticalPlace g_place = widget::VerticalPlace::Auto;  // where the column sits on such a taskbar (menu option)
 bool g_farLeft;     // at the left end of the taskbar instead of next to the clock (menu option)
+bool g_beforeApps;  // just left of Start / the first task button, centred taskbar (menu option, PR #760)
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
@@ -410,7 +411,15 @@ bool FarLeftX(HWND bar, int width, int& x) {
     bool ok = false;
     AcquireSRWLockShared(&g_wbLock);
     for (const auto& s : g_spans)
-        if (s.bar == bar && s.measured && s.hasFirst) {
+        if (s.bar == bar && s.measured && s.hasFirst && g_beforeApps) {
+            // Right next to the taskbar apps (PR #760): just left of Start, or left of the Widgets button
+            // when that sits between the free space and Start. Needs room between the bar's edge and them.
+            int edge = s.firstLeft;
+            if (s.hasWidgets && s.widgets.right <= s.firstLeft && s.widgets.right + Px(4) >= s.firstLeft - width - Px(4))
+                edge = s.widgets.left;
+            x = edge - width - Px(4);
+            ok = x >= br.left + Px(4);
+        } else if (s.bar == bar && s.measured && s.hasFirst) {
             x = br.left + Px(4);
             if (s.hasWidgets && s.widgets.left < x + width + Px(4) && s.widgets.right > x) x = s.widgets.right + Px(4);
             ok = x + width + Px(4) <= s.firstLeft;
@@ -953,7 +962,7 @@ void PositionMirror(Mirror& m) {
         ERROR_SUCCESS)
         right -= Px((int)offset);
     int left = right - length - Px(2), farX = 0;
-    bool atFarLeft = !v && g_farLeft && FarLeftX(m.bar, m.size.cx, farX);  // horizontal bars only
+    bool atFarLeft = !v && (g_farLeft || g_beforeApps) && FarLeftX(m.bar, m.size.cx, farX);  // horizontal bars only
     if (atFarLeft) left = farX;
     g_dpiBar = nullptr;
     if (!atFarLeft && (!known || length <= 0 || left < minLeft)) { HideMirror(m); return; }
@@ -1292,13 +1301,23 @@ void SetVerticalPlace(VerticalPlace place) {
 
 bool Vertical() { return g_wnd && g_vertical; }
 
-void SetFarLeft(bool on) {
-    g_farLeft = on;
+void ApplyLeftSpot() {
+    bool on = g_farLeft || g_beforeApps;
     AcquireSRWLockExclusive(&g_wbLock);
-    g_wbFarLeft = on;
+    g_wbFarLeft = on;  // measure the primary taskbar too
     ReleaseSRWLockExclusive(&g_wbLock);
     if (on && g_wbWake) SetEvent(g_wbWake);  // measure the taskbar now, not in 5 s
     if (g_wnd) Reposition();
+}
+
+void SetFarLeft(bool on) {
+    g_farLeft = on;
+    ApplyLeftSpot();
+}
+
+void SetBeforeApps(bool on) {
+    g_beforeApps = on;
+    ApplyLeftSpot();
 }
 
 void SetMonitorChoice(const std::wstring& choice) {
@@ -1499,7 +1518,7 @@ bool Reposition() {
     }
 
     int farX = 0;
-    bool atFarLeft = !rtl && g_farLeft && FarLeftX(g_taskbar, g_size.cx, farX);
+    bool atFarLeft = !rtl && (g_farLeft || g_beforeApps) && FarLeftX(g_taskbar, g_size.cx, farX);
     if (atFarLeft) {
         POINT fp{ farX, bar.top };
         ScreenToClient(g_taskbar, &fp);
