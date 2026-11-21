@@ -53,6 +53,10 @@ bool HidDev::OpenFeatureOnly(const HidColl& c) {
     return true;
 }
 void HidDev::Close() {}
+// The PRO Dongle / ZYWOO path (input/output reports) is not exercised here: these collections never match it.
+bool HidDev::Open(const HidColl&) { assert(false && "unexpected input/output open"); return false; }
+int HidDev::WriteAndRead(const std::vector<BYTE>&, std::vector<BYTE>&, int, bool*) { return -1; }
+int HidDev::Read(std::vector<BYTE>&, int) { return -1; }
 bool HidDev::SetFeature(const std::vector<BYTE>& q) {
     ++requests;
     assert(q.size() == 65 && q[0] == 0);
