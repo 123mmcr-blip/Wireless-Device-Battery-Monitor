@@ -28,6 +28,7 @@
 #include "json_output.h"
 #include "labels.h"
 #include "refresh_policy.h"
+#include "memory_trim.h"
 #include "report.h"
 #include "rename_dialog.h"
 #include "widget.h"
@@ -783,6 +784,7 @@ void OnResults(std::vector<DeviceStatus>& results) {
     Reconcile();  // react to the new device list now, not at the next timer tick
     UpdatePlaceholder();
     UpdateWidget();
+    memory_trim::Soon();  // the poll (HID, Bluetooth, drivers) is done: give its pages back until the next one
 }
 
 bool NothingShown() {
@@ -1159,6 +1161,7 @@ void ShowMenu() {
                                 pt.x, pt.y, g_hwnd, fromTaskbar ? &tpm : nullptr);
     PostMessageW(g_hwnd, WM_NULL, 0, 0);
     DestroyMenu(m);
+    memory_trim::Soon();
     switch (cmd) {
         case ID_REFRESH: SetEvent(g_refreshEvt); break;
         case ID_AUTOSTART: SetAutostart(!AutostartEnabled()); break;
