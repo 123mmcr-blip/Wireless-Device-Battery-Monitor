@@ -21,13 +21,24 @@ HidColl Collection(USHORT page = 0xFF00, USHORT inLen = 64, USHORT outLen = 64, 
     return c;
 }
 
-// Heartbeat reply as Read() hands it to the driver: command byte first, battery at [4], charging at [5].
+// Heartbeat reply as Read() hands it to the driver: 51 00 00 03, battery at [4], charging at [5].
 std::vector<BYTE> Heartbeat(BYTE percent, BYTE charging = 0) {
     std::vector<BYTE> r(64, 0);
     r[0] = 0x51;
+    r[3] = 0x03;
     r[4] = percent;
     r[5] = charging;
     r[6] = 0x0F;
+    return r;
+}
+
+// The other heartbeat reply a real 16E1 dongle sends for minutes at a time (no level): 51 00 02 EC 05 00 ...
+std::vector<BYTE> NoLevel() {
+    std::vector<BYTE> r(64, 0);
+    r[0] = 0x51;
+    r[2] = 0x02;
+    r[3] = 0xEC;
+    r[4] = 0x05;
     return r;
 }
 
@@ -102,9 +113,25 @@ int main() {
     ctx = Poll(Collection(), { noise, noise, Heartbeat(12) });
     assert(ctx.out.size() == 1 && ctx.out[0].percent == 12);
 
-    // A level above 100 is not a level: nothing is listed and nothing is claimed.
+    // The 51 00 02 EC 05 reply has no level: its 05 must not show as 5%. The mouse stays listed as asleep with an
+    // unknown level, so the tray keeps the last reading.
+    ctx = Poll(Collection(), { NoLevel() });
+    assert(ctx.out.size() == 1 && ctx.out[0].asleep && ctx.out[0].percent < 0 && !ctx.out[0].charging);
+    assert(ctx.out[0].connected && ctx.IsClaimed(0x0951, 0x16E1));
+
+    // Only the exact 00 00 03 header carries a level: any other value at [1], [2] or [3] does not.
+    for (int i : { 1, 2, 3 }) {
+        auto r = Heartbeat(60);
+        r[i] ^= 0x01;
+        ctx = Poll(Collection(), { r });
+        assert(ctx.out.size() == 1 && ctx.out[0].asleep && ctx.out[0].percent < 0);
+    }
+
+    // A level above 100 is not a level either: listed as asleep with an unknown level.
     ctx = Poll(Collection(), { Heartbeat(101) });
-    assert(ctx.out.empty() && ctx.claimed.empty());
+    assert(ctx.out.size() == 1 && ctx.out[0].asleep && ctx.out[0].percent < 0);
+    ctx = Poll(Collection(), { Heartbeat(100) });
+    assert(ctx.out.size() == 1 && !ctx.out[0].asleep && ctx.out[0].percent == 100);
 
     // No reply: nothing listed, nothing claimed.
     ctx = Poll(Collection(), {});
@@ -132,5 +159,6 @@ int main() {
     assert(claimed.out.empty() && opens == 0);
 
     std::puts("HyperX Pulsefire Dart driver tests passed "
-              "(level, charging, noise, invalid level, no reply, short reply, filtering).");
+              "(level, charging, noise, no-level reply, header check, invalid level, no reply, short reply, "
+              "filtering).");
 }

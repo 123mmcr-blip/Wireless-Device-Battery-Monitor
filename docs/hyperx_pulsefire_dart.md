@@ -6,8 +6,8 @@ NGENUITY:
 - [santeri3700/hyperx_pulsefire_dart_reverse_engineering](https://github.com/santeri3700/hyperx_pulsefire_dart_reverse_engineering) (CC0), `protocol/index.md`
 - [radoslavchobanov/PlasmaNGenuity](https://github.com/radoslavchobanov/PlasmaNGenuity) (MIT), an implementation based on those notes, `plasmangenuity/drivers/hyperx/protocol.py`
 
-Read on hardware (Windows, 2026-11-20): a `0951:16E1` dongle answered the heartbeat with 74%. The level has not
-yet been compared with NGENUITY, and the charging flag has not yet been observed.
+Read on hardware (Windows, 2026-11-20 and 2026-11-21): a `0951:16E1` dongle answered the heartbeat with 74%, and
+later with 69% while NGENUITY showed 69%. The charging flag has not yet been observed.
 
 ## Device
 
@@ -24,18 +24,23 @@ collection.
 
 | Request | Reply | Meaning |
 |---|---|---|
-| `51` (heartbeat) | `51 .. .. .. <percent> <charging> ..` | `[4]` battery 0..100, `[5]` 1 = charging |
+| `51` (heartbeat) | `51 00 00 03 <percent> <charging> 0F ..` | `[4]` battery 0..100, `[5]` 1 = charging |
+| `51` (heartbeat) | `51 00 02 EC 05 00 ..` | no level (see below) |
 
 The driver writes report ID `00` followed by `51`, so the mouse receives `51 00 00 ...`. The reply is read
 with a one-second limit and unrelated reports are skipped. Bytes `[6..10]` of the reply are undocumented
 (the notes guess that `[7..8]` might be a voltage), so no voltage is reported.
 
-The reply carries no connection or sleep state (the notes list a separate connectivity report `46` and a
-sleep event `FF`, with no documented request). The sources don't say what the dongle answers while the mouse is
-off or asleep: without a reply nothing is listed, but a dongle that answers with a cached level would show it.
+The second reply is not in the sources. A real `16E1` dongle (2026-11-21) sent it in stretches of half a minute
+to several minutes while NGENUITY showed 69%, with the documented 69% reply in between; what triggers it (sleep,
+link state or something else) is not known yet. Its `05` is not a level: reading `[4]` regardless showed 5%. So only the `00 00 03` header gives a
+level; any other heartbeat reply lists the mouse as asleep with an unknown level, and the tray keeps the last
+reading (dimmed unless the user turned dimming off).
+
+The documented reply carries no connection or sleep state (the notes list a separate connectivity report `46`
+and a sleep event `FF`, with no documented request). Without any reply nothing is listed.
 
 ## Still to check on hardware
 
-- That `[4]` matches the level NGENUITY shows.
 - That `[5]` is 1 while the mouse is on its charger.
-- What the dongle answers while the mouse is switched off or asleep (no reply, or a stale level).
+- What exactly makes the dongle send `51 00 02 EC 05` (sleep, link loss, or something else).

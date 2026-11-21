@@ -170,13 +170,14 @@ bool HasteWireless(const HidColl& c, DeviceStatus& s) {
 
 // Pulsefire Dart (Kingston dongle 0951:16E1, vendor collection FF00 on interface 2): the "heartbeat"
 // query, a 64-byte zero-padded output report whose first byte is the command 0x51 (sent here with report ID 0).
-// The reply is an input report starting with 0x51: [4] = battery 0..100 %, [5] = 1 while charging.
-// The remaining bytes ([6..10]) are undocumented, so no voltage is reported. The reply carries no link/sleep
-// state, and the sources don't say what the dongle answers while the mouse is off or asleep: without a reply
-// nothing is listed, but a dongle that answers with a cached level would show that level.
+// The documented reply is the input report 51 00 00 03 <battery 0..100 %> <1 = charging> ...; bytes [6..10] are
+// undocumented, so no voltage is reported. The dongle can also answer 51 00 02 EC 05 00 ...: on a real 16E1 dongle
+// (2026-11-21) it did so in stretches of half a minute to minutes while NGENUITY showed 69%, trigger unknown. That
+// 05 is not a level (reading it as one showed 5%), so only the 00 00 03 layout gives a level; any other heartbeat
+// reply lists the mouse as asleep with an unknown level, and the tray keeps the last reading.
 // Source: community reverse engineering from NGENUITY captures (see the credits at the top of the file). Read on a
-// real 16E1 dongle on Windows (2026-11-20): the collection is MI_02 FF00:0001 with 65-byte input/output/feature
-// reports, and the heartbeat returned 74%; not yet compared with NGENUITY, charging not yet observed. The cable
+// real 16E1 dongle on Windows: the collection is MI_02 FF00:0001 with 65-byte input/output/feature reports, and
+// the documented reply gave 69%, the level NGENUITY showed at the same time; charging not yet observed. The cable
 // variant (0951:16E2, FF13) is not handled. Protocol notes: docs/hyperx_pulsefire_dart.md.
 bool PulsefireDart(const HidColl& c, DeviceStatus& s) {
     HidDev d;
@@ -184,9 +185,12 @@ bool PulsefireDart(const HidColl& c, DeviceStatus& s) {
     std::vector<BYTE> r;
     auto heartbeat = [](const std::vector<BYTE>& r) { return r.size() >= 6 && r[0] == 0x51; };
     if (!Query(d, { 0x00, 0x51 }, r, 1000, heartbeat)) return false;
-    if (r[4] > 100) return false;  // not a level
     s = Base(c.pid, L"HyperX Pulsefire Dart");
     s.kind = DeviceKind::Mouse;
+    if (r[1] != 0x00 || r[2] != 0x00 || r[3] != 0x03 || r[4] > 100) {
+        s.asleep = true;  // answered without a level (e.g. 51 00 02 EC 05): keep the last reading
+        return true;
+    }
     s.percent = r[4];
     s.charging = r[5] == 0x01;
     return true;
