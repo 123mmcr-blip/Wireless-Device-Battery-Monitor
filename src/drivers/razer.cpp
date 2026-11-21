@@ -242,6 +242,12 @@ void PollRazer(PollContext& ctx) {
             s.kind = kind;
             if (s.kind == DeviceKind::Other) s.kind = GuessKind(s.name);
             s.via = L"Razer receiver";
+            // The Viper V2 Pro changes PID between its cable (00A5) and its receiver (00A6, PR #1422): one key,
+            // so its history, name and position survive a cable change.
+            if (pid == 0x00A5 || pid == 0x00A6) {
+                s.key = L"razer:00A6";
+                if (pid == 0x00A5) s.via = L"USB cable";
+            }
             s.graceSec = 120;  // retain the last reading briefly when Synapse prevents a valid reply
             SetBatteryReading(s, d, tid, res, args);
             if (res == Rz::Offline) {
