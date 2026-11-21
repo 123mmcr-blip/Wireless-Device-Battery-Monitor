@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 
 namespace {
 
@@ -165,6 +166,21 @@ void SetBatteryReading(DeviceStatus& s, HidDev& d, BYTE tid, Rz res, const std::
 }  // namespace
 
 void PollRazer(PollContext& ctx) {
+    struct LastReading { std::wstring path; DeviceStatus status; };
+    static std::map<USHORT, LastReading> lastGood;
+    for (auto it = lastGood.begin(); it != lastGood.end();) {
+        bool present = false;
+        for (const auto& c : ctx.colls)
+            if (c.path == it->second.path) { present = true; break; }
+        if (present) { ++it; continue; }
+        // A removed receiver is different from a mouse sleeping behind it.
+        DeviceStatus gone = it->second.status;
+        gone.connected = false;
+        gone.percent = -1;
+        gone.charging = false;
+        ctx.out.push_back(gone);
+        it = lastGood.erase(it);
+    }
     const auto firstRazer = ctx.out.size();
     auto addReading = [&](const DeviceStatus& s, USHORT vid, USHORT pid) {
         // The same device can answer through its cable, its receiver or a shared receiver.
@@ -174,9 +190,10 @@ void PollRazer(PollContext& ctx) {
             ctx.Add(s, vid, pid);
         } else {
             ctx.Claim(vid, pid);
-            if (!existing->connected && s.connected) {
+            if (s.percent >= 0 && existing->percent < 0) {  // a live reading wins over an asleep one
                 existing->connected = true;
                 existing->percent = s.percent;
+                existing->asleep = false;
             }
             existing->charging |= s.charging;
         }
@@ -227,6 +244,14 @@ void PollRazer(PollContext& ctx) {
             s.via = L"Razer receiver";
             s.graceSec = 120;  // retain the last reading briefly when Synapse prevents a valid reply
             SetBatteryReading(s, d, tid, res, args);
+            if (res == Rz::Offline) {
+                // Receiver timeouts cannot distinguish sleep from the power switch (PR #3787).
+                // Keep a previously seen mouse dimmed while its receiver remains plugged in.
+                s.asleep = s.kind == DeviceKind::Mouse && lastGood.count(pid) != 0;
+                s.connected = s.asleep;
+            } else if (s.kind == DeviceKind::Mouse) {
+                lastGood[pid] = { c->path, s };
+            }
             addReading(s, vid, pid);
             break;
         }
