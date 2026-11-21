@@ -46,7 +46,7 @@ constexpr UINT ALERT_ICON_ID = 2;
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
-    ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY,  // "Position on a vertical taskbar"
+    ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_UPDATE = 200, ID_AUTO_UPDATE,
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
@@ -298,10 +298,11 @@ void SaveStacked(bool on) { SaveBoolSetting(L"StackedLayout", on); }
 widget::VerticalPlace LoadVerticalPlace() {
     DWORD v = 0, sz = sizeof(v);
     RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", RRF_RT_REG_DWORD, nullptr, &v, &sz);
-    return v == 1 ? widget::VerticalPlace::Top : v == 2 ? widget::VerticalPlace::AboveTray : widget::VerticalPlace::Auto;
+    return v == 1 ? widget::VerticalPlace::Top : v == 2 ? widget::VerticalPlace::AboveTray
+         : v == 3 ? widget::VerticalPlace::Bottom : widget::VerticalPlace::Auto;
 }
 void SaveVerticalPlace(widget::VerticalPlace p) {
-    DWORD v = p == widget::VerticalPlace::Top ? 1 : p == widget::VerticalPlace::AboveTray ? 2 : 0;
+    DWORD v = p == widget::VerticalPlace::Top ? 1 : p == widget::VerticalPlace::AboveTray ? 2 : p == widget::VerticalPlace::Bottom ? 3 : 0;
     RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", REG_DWORD, &v, sizeof(v));
 }
 bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
@@ -900,9 +901,11 @@ void ShowMenu() {
         AppendMenuW(sub, MF_STRING, ID_PLACE_AUTO, T(L"Automatic (keeps clear of app icons)"));
         AppendMenuW(sub, MF_STRING, ID_PLACE_TOP, T(L"Top of the taskbar"));
         AppendMenuW(sub, MF_STRING, ID_PLACE_TRAY, T(L"Above the notification area"));
-        CheckMenuRadioItem(sub, ID_PLACE_AUTO, ID_PLACE_TRAY,
+        AppendMenuW(sub, MF_STRING, ID_PLACE_BOTTOM, T(L"Bottom of the taskbar (moves the taskbar icons up, Windows 11)"));
+        CheckMenuRadioItem(sub, ID_PLACE_AUTO, ID_PLACE_BOTTOM,
                            g_verticalPlace == widget::VerticalPlace::Top ? ID_PLACE_TOP
-                           : g_verticalPlace == widget::VerticalPlace::AboveTray ? ID_PLACE_TRAY : ID_PLACE_AUTO,
+                           : g_verticalPlace == widget::VerticalPlace::AboveTray ? ID_PLACE_TRAY
+                           : g_verticalPlace == widget::VerticalPlace::Bottom ? ID_PLACE_BOTTOM : ID_PLACE_AUTO,
                            MF_BYCOMMAND);
         AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Position on a vertical taskbar"));
     }
@@ -996,6 +999,7 @@ void ShowMenu() {
         case ID_PLACE_AUTO: SetWidgetPlace(widget::VerticalPlace::Auto); break;
         case ID_PLACE_TOP: SetWidgetPlace(widget::VerticalPlace::Top); break;
         case ID_PLACE_TRAY: SetWidgetPlace(widget::VerticalPlace::AboveTray); break;
+        case ID_PLACE_BOTTOM: SetWidgetPlace(widget::VerticalPlace::Bottom); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;

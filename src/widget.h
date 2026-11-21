@@ -33,7 +33,9 @@ void SetBackground(bool on);
 // Icon above the percentage instead of beside it, when the taskbar is tall enough (kept across Create/Destroy).
 void SetStacked(bool on);
 // Where the column sits on a left / right taskbar (kept across Create/Destroy).
-enum class VerticalPlace { Auto, Top, AboveTray };  // Auto: above the tray, at the top while task buttons reach it
+// Auto: above the tray, at the top while task buttons reach it. Bottom (Windows 11): at the very bottom,
+// with the taskbar's own content (task buttons and tray) moved up to make room.
+enum class VerticalPlace { Auto, Top, AboveTray, Bottom };
 void SetVerticalPlace(VerticalPlace place);
 // True while the widget is on a left / right taskbar.
 bool Vertical();

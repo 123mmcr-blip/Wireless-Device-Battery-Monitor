@@ -42,6 +42,25 @@ bool g_primaryHidden = false;
 HWND g_dpiBar;  // while a mirror is painted or placed, Px() uses its taskbar's DPI
 
 const wchar_t* kClass = L"WirelessBatteryWidget";
+const wchar_t* kBridgeClass = L"Windows.UI.Composition.DesktopWindowContentBridge";
+
+// Windows 11, left / right taskbar, "Bottom" place: the taskbar's XAML content (task buttons and tray) lives
+// in one child window that fills the bar. Making that window `reserve` pixels shorter moves all of its
+// content up by as much and leaves the bottom of the bar free for the column, so nothing is covered.
+// Explorer gives the window its full height back on its own layout passes, so Reposition() re-applies
+// this; 0 restores it. Only a window we shortened ourselves is ever restored.
+bool g_reserved;
+void ReserveBottom(int reserve) {
+    HWND bridge = g_taskbar && IsWindow(g_taskbar) ? FindWindowExW(g_taskbar, nullptr, kBridgeClass, nullptr) : nullptr;
+    if (!bridge || (!reserve && !g_reserved)) { g_reserved = false; return; }
+    RECT client{}, br{};
+    GetClientRect(g_taskbar, &client);
+    GetWindowRect(bridge, &br);
+    int want = client.bottom - reserve;
+    if (want > 0 && br.bottom - br.top != want)
+        SetWindowPos(bridge, nullptr, 0, 0, br.right - br.left, want, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    g_reserved = reserve > 0;
+}
 
 int Dpi() {
     HWND bar = g_dpiBar ? g_dpiBar : g_taskbar;
@@ -816,6 +835,7 @@ void SetPrimaryHidden(bool hide) {
     g_primaryHidden = hide;
     if (hide) {
         ShowWindow(g_wnd, SW_HIDE);
+        ReserveBottom(0);
         if (g_rebar && IsWindow(g_rebar)) {  // Windows 10: give the task buttons their full width back
             RECT r;
             GetClientRect(g_taskbar, &r);
@@ -970,6 +990,7 @@ void Destroy() {
         PostMessageW(g_taskbar, WM_SIZE, SIZE_RESTORED, MAKELPARAM(r.right, r.bottom));
     }
     g_rebar = nullptr;
+    ReserveBottom(0);  // give the taskbar its full height back
     for (auto& m : g_mirrors) DestroyMirror(m);
     g_mirrors.clear();
     SetMeasureMirrors(false);
@@ -1069,11 +1090,15 @@ bool Reposition() {
         top = std::clamp(top, 0, (int)std::max<LONG>(0, client.bottom - g_size.cy));
         // Windows 11: the centred task list grows down to the tray and would end up under the column.
         // When that happens, move to the free end of the bar above the first button, if the column fits.
-        // The menu can also pin the column to the top or keep it above the tray.
+        // The menu can also pin the column to the top, keep it above the tray, or give it the bottom of the bar.
         AcquireSRWLockShared(&g_wbLock);
         Column col = g_column;
         ReleaseSRWLockShared(&g_wbLock);
-        if (g_place == widget::VerticalPlace::Top) {
+        bool bottom = g_place == widget::VerticalPlace::Bottom && !g_rebar && g_size.cy > 0 && g_size.cy < client.bottom / 2;
+        ReserveBottom(bottom ? g_size.cy : 0);
+        if (bottom) {
+            top = client.bottom - g_size.cy;
+        } else if (g_place == widget::VerticalPlace::Top) {
             top = 0;
         } else if (g_place == widget::VerticalPlace::Auto && !g_rebar && col.bar == g_taskbar && col.measured && col.any) {
             POINT first{ bar.left, col.top }, last{ bar.left, col.bottom };
@@ -1101,6 +1126,7 @@ bool Reposition() {
         SetWindowPos(g_wnd, HWND_TOP, left, top, g_size.cx, g_size.cy, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         return true;
     }
+    ReserveBottom(0);  // the taskbar was moved from a vertical edge to a horizontal one
     // Right-to-left Windows (Hebrew, Arabic) mirrors the taskbar: client x runs from the screen's right
     // edge, so a window's client-space left edge is its screen-space right edge.
     bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
