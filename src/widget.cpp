@@ -15,6 +15,7 @@ bool g_light, g_hover;
 bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
 bool g_stacked;     // icon above the percentage (menu option, PR #525)
 bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
+widget::VerticalPlace g_place = widget::VerticalPlace::Auto;  // where the column sits on such a taskbar (menu option)
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
@@ -1017,6 +1018,13 @@ void SetStacked(bool on) {
     if (g_wnd) Reposition();
 }
 
+void SetVerticalPlace(VerticalPlace place) {
+    g_place = place;
+    if (g_wnd) Reposition();
+}
+
+bool Vertical() { return g_wnd && g_vertical; }
+
 void SetMonitorChoice(const std::wstring& choice) {
     g_choice = choice.empty() ? L"all" : choice;
     SyncMirrors();  // adds, removes or hides strips right away
@@ -1061,10 +1069,13 @@ bool Reposition() {
         top = std::clamp(top, 0, (int)std::max<LONG>(0, client.bottom - g_size.cy));
         // Windows 11: the centred task list grows down to the tray and would end up under the column.
         // When that happens, move to the free end of the bar above the first button, if the column fits.
+        // The menu can also pin the column to the top or keep it above the tray.
         AcquireSRWLockShared(&g_wbLock);
         Column col = g_column;
         ReleaseSRWLockShared(&g_wbLock);
-        if (!g_rebar && col.bar == g_taskbar && col.measured && col.any) {
+        if (g_place == widget::VerticalPlace::Top) {
+            top = 0;
+        } else if (g_place == widget::VerticalPlace::Auto && !g_rebar && col.bar == g_taskbar && col.measured && col.any) {
             POINT first{ bar.left, col.top }, last{ bar.left, col.bottom };
             ScreenToClient(g_taskbar, &first);
             ScreenToClient(g_taskbar, &last);
