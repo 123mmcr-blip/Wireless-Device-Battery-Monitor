@@ -34,6 +34,7 @@ struct Status {
 inline bool ParseStatusPush(const Bytes& r, Layout& layout, Status& out) {
     if (r.size() < 8 || r[0] != 0x09) return false;
     const std::uint8_t* d = r.data() + 1;
+    if (!(d[0] | d[1] | d[2] | d[3] | d[4] | d[5] | d[6])) return false;  // all zero: carries nothing
     bool packed = (d[0] & 0x7F) <= 100 && (d[1] & 0x0F) <= 6 && (d[1] >> 4) <= 5 && (d[2] & 0x3F) <= 30;
     bool old = d[0] <= 1 && d[1] <= 100 && d[2] <= 5 && d[3] <= 6 && !d[5] && !d[6];
     if (!packed && !old) return false;
@@ -91,7 +92,9 @@ inline Reading Choose(bool cable, Receiver receiver, const Status& push, const S
     if (src) {
         out.show = true;
         out.charging = src->charging;
-        out.connected = cable || src->percent > 0 || src->charging;  // 0 from a dongle: mouse off or out of range
+        // A push only comes from a mouse that is on, so its 0% is a real (empty) reading. From a receiver's
+        // 89 answer, 0 means the mouse is off or out of range, as before.
+        out.connected = src == &push || cable || src->percent > 0 || src->charging;
         if (out.connected) out.percent = src->percent;
         return out;
     }

@@ -59,11 +59,17 @@ int main() {
     r = Choose(false, Receiver::Unknown, Status{}, Status{});
     assert(!r.show);
 
-    // 0 from a dongle: the mouse is off or out of range.
+    // A valid push at 0% comes from a mouse that is on: shown as 0%, not as switched off.
     layout = Layout::Unknown;
     Status zero;
     assert(ParseStatusPush(Pad({ 0x09, 0x00, 0x40, 0x04, 0x00, 0x3F, 0x3F, 0x21 }, 33), layout, zero));
     r = Choose(false, Receiver::EightK, zero, Status{});
+    assert(r.show && r.connected && r.percent == 0 && !r.asleep);
+    // An all-zero push carries nothing (no rate, dpi or LOD): not a 0% reading.
+    Status blank;
+    assert(!ParseStatusPush(Pad({ 0x09 }, 33), layout, blank));
+    // 0 in a receiver's 89 answer still means the mouse is off or out of range (unchanged).
+    r = Choose(false, Receiver::Other, Status{}, Status{ 0, false });
     assert(r.show && !r.connected && r.percent == -1);
 
     // Same G23 Pro on a charger for about 2 minutes, dongle still in: the push sets the charging bit

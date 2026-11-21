@@ -2,10 +2,12 @@
 // Frames are the ones captured on a first-generation G23 Pro behind its 8K receiver (093A:522C, FF05:0001).
 #include "../src/drivers/drivers.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <map>
+#include <thread>
 
 #define CHECK(cond)                                                                                                    \
     do {                                                                                                               \
@@ -22,6 +24,7 @@ struct FakeColl {
     std::deque<std::vector<BYTE>> inputs;      // queued input reports
     int lateAfterReads = -1;                   // deliver `late` after this many empty reads
     std::vector<BYTE> late;
+    std::vector<BYTE> endless;                 // when set, every read returns this at once, forever
     BYTE last = 0;
 };
 std::map<std::wstring, FakeColl> fakes;  // by collection path
@@ -67,6 +70,22 @@ const DeviceStatus* Find(const PollContext& ctx, const wchar_t* key) {
     return nullptr;
 }
 
+// Runs one poll; aborts the test (instead of hanging the suite) if it does not return within `ms`.
+PollContext PollWithin(std::vector<HidColl> colls, ULONGLONG ms) {
+    std::atomic<bool> done{ false };
+    std::thread watchdog([&done, ms] {
+        for (ULONGLONG t0 = GetTickCount64(); GetTickCount64() - t0 < ms; Sleep(10))
+            if (done) return;
+        std::fprintf(stderr, "CHECK failed: poll did not return within %llu ms\n", ms);
+        std::fflush(stderr);
+        std::_Exit(1);
+    });
+    PollContext ctx = Poll(std::move(colls));
+    done = true;
+    watchdog.join();
+    return ctx;
+}
+
 int Count(BYTE cmd) {
     int n = 0;
     for (BYTE c : sent) n += c == cmd;
@@ -93,6 +112,10 @@ bool HidDev::Write(const std::vector<BYTE>&, int) { return false; }
 void HidDev::Flush() {}
 int HidDev::Read(std::vector<BYTE>& buf, int timeoutMs) {
     FakeColl& f = fakes[c_.path];
+    if (!f.endless.empty()) {
+        buf = f.endless;
+        return (int)buf.size();
+    }
     if (f.inputs.empty() && f.lateAfterReads >= 0 && f.lateAfterReads-- == 0) f.inputs.push_back(f.late);
     if (f.inputs.empty()) {
         if (timeoutMs > 0) Sleep(timeoutMs);
@@ -197,6 +220,28 @@ int main() {
     fakes[L"rx"].inputs = { kPush73 };
     ctx = Poll({ rx, cable });
     CHECK(Find(ctx, L"incott:622C") && Find(ctx, L"incott:522C") && Find(ctx, L"incott:522C")->percent == 73);
+
+    ctx = Poll({});
+
+    // 11. A receiver that never stops sending valid pushes must not stall the poll (bounded polling).
+    fakes[L"rx"] = FakeColl{ { { 0x8F, kInfo8k }, { 0x89, kFeature58 } }, {} };
+    fakes[L"rx"].endless = kPush73;
+    ctx = PollWithin({ rx }, 2000);
+    s = Find(ctx, L"incott:522C");
+    CHECK(s && s->percent == 73 && Count(0x89) == 0);
+
+    // 12. Same with an endless stream of reports that are not a status (other report id), on an existing
+    //     listener and then on a new one waiting for its first push: bounded, asleep, 89 still not used.
+    fakes[L"rx"].endless = Pad({ 0x08, 0x01, 0x02, 0x03 }, 33);
+    ctx = PollWithin({ rx }, 2000);
+    s = Find(ctx, L"incott:522C");
+    CHECK(s && s->asleep && s->percent == -1 && Count(0x89) == 0);
+    ctx = Poll({});
+    fakes[L"rx"] = FakeColl{ { { 0x8F, kInfo8k }, { 0x89, kFeature58 } }, {} };
+    fakes[L"rx"].endless = Pad({ 0x08, 0x01, 0x02, 0x03 }, 33);
+    ctx = PollWithin({ rx }, 6000);
+    s = Find(ctx, L"incott:522C");
+    CHECK(s && s->asleep && s->percent == -1 && Count(0x89) == 0);
 
     std::puts("incott_driver_test: all passed");
     return 0;

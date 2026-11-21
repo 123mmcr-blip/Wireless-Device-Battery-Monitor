@@ -454,20 +454,29 @@ struct IncottListener {
 };
 std::map<std::wstring, IncottListener> g_incott;  // by collection path
 
-// Newest pushed status queued since the previous call (percent -1 when none). When nothing is queued, waits
-// up to waitMs for the next push.
+// Newest pushed status queued since the previous call (percent -1 when none). When nothing valid is queued,
+// waits up to waitMs for the next push. One absolute budget covers the whole call across all collections
+// (the drain time or waitMs, whichever is longer, and at most kIncottMaxReports reports), so a collection
+// that never stops sending cannot stall the poll.
+constexpr int kIncottDrainMs = 250;
+constexpr int kIncottMaxReports = 64;  // Windows queues 32 input reports per handle by default
 incott_protocol::Status DrainIncott(const std::vector<IncottListener*>& ls, int waitMs) {
     incott_protocol::Status newest;
-    ULONGLONG end = GetTickCount64() + waitMs;
+    const ULONGLONG end = GetTickCount64() + std::max(waitMs, kIncottDrainMs);
+    auto left = [end] { return (LONGLONG)end - (LONGLONG)GetTickCount64(); };
+    int reports = 0;
     std::vector<BYTE> r;
     while (!ls.empty()) {
         for (IncottListener* l : ls) {
-            while (l->dev->Read(r, 30) >= 8) {
+            while (reports < kIncottMaxReports && left() > 0) {
+                int n = l->dev->Read(r, (int)std::min<LONGLONG>(30, left()));
+                if (n < 0) break;  // queue empty
+                reports++;
                 incott_protocol::Status s;
-                if (incott_protocol::ParseStatusPush(r, l->layout, s)) newest = s;
+                if (n >= 8 && incott_protocol::ParseStatusPush(r, l->layout, s)) newest = s;
             }
         }
-        if (newest.percent >= 0 || (LONGLONG)end - (LONGLONG)GetTickCount64() <= 0) break;
+        if (waitMs <= 0 || newest.percent >= 0 || reports >= kIncottMaxReports || left() <= 0) break;
     }
     return newest;
 }
