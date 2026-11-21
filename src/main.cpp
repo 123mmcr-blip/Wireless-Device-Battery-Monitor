@@ -302,7 +302,8 @@ widget::VerticalPlace LoadVerticalPlace() {
          : v == 3 ? widget::VerticalPlace::Bottom : widget::VerticalPlace::Auto;
 }
 void SaveVerticalPlace(widget::VerticalPlace p) {
-    DWORD v = p == widget::VerticalPlace::Top ? 1 : p == widget::VerticalPlace::AboveTray ? 2 : p == widget::VerticalPlace::Bottom ? 3 : 0;
+    DWORD v = p == widget::VerticalPlace::Top ? 1 : p == widget::VerticalPlace::AboveTray ? 2
+              : p == widget::VerticalPlace::Bottom ? 3 : 0;
     RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", REG_DWORD, &v, sizeof(v));
 }
 bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
@@ -901,7 +902,8 @@ void ShowMenu() {
         AppendMenuW(sub, MF_STRING, ID_PLACE_AUTO, T(L"Automatic (keeps clear of app icons)"));
         AppendMenuW(sub, MF_STRING, ID_PLACE_TOP, T(L"Top of the taskbar"));
         AppendMenuW(sub, MF_STRING, ID_PLACE_TRAY, T(L"Above the notification area"));
-        AppendMenuW(sub, MF_STRING, ID_PLACE_BOTTOM, T(L"Bottom of the taskbar (moves the taskbar icons up, Windows 11)"));
+        AppendMenuW(sub, MF_STRING, ID_PLACE_BOTTOM,
+                    T(L"Bottom of the taskbar (moves the taskbar icons up, Windows 11)"));
         CheckMenuRadioItem(sub, ID_PLACE_AUTO, ID_PLACE_BOTTOM,
                            g_verticalPlace == widget::VerticalPlace::Top ? ID_PLACE_TOP
                            : g_verticalPlace == widget::VerticalPlace::AboveTray ? ID_PLACE_TRAY

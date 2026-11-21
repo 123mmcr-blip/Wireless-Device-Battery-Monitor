@@ -68,10 +68,12 @@ COLORREF g_fillColor;
 bool SampleBarColor(const RECT& bar, int screenTop, COLORREF& out) {
     HDC dc = GetDC(nullptr);
     int w = bar.right - bar.left, y = screenTop - Px(4);
-    COLORREF c[3] = { GetPixel(dc, bar.left + w / 4, y), GetPixel(dc, bar.left + w / 2, y), GetPixel(dc, bar.left + w * 3 / 4, y) };
+    COLORREF c[3];
+    for (int i = 0; i < 3; i++) c[i] = GetPixel(dc, bar.left + w * (i + 1) / 4, y);
     ReleaseDC(nullptr, dc);
     auto differs = [](COLORREF a, COLORREF b, int tol) {
-        return abs(GetRValue(a) - GetRValue(b)) > tol || abs(GetGValue(a) - GetGValue(b)) > tol || abs(GetBValue(a) - GetBValue(b)) > tol;
+        return abs(GetRValue(a) - GetRValue(b)) > tol || abs(GetGValue(a) - GetGValue(b)) > tol ||
+               abs(GetBValue(a) - GetBValue(b)) > tol;
     };
     for (COLORREF v : c)
         if (v == CLR_INVALID || differs(v, c[1], 10)) return false;
@@ -219,8 +221,8 @@ Column MeasureColumn(IUIAutomation* uia, HWND bar) {
     RECT br{}, tr{};
     HWND tray = FindWindowExW(bar, nullptr, L"TrayNotifyWnd", nullptr);
     IUIAutomationElement* root = nullptr;
-    if (!tray || !GetWindowRect(tray, &tr) || !GetWindowRect(bar, &br) || FAILED(uia->ElementFromHandle(bar, &root)) || !root)
-        return c;
+    if (!tray || !GetWindowRect(tray, &tr) || !GetWindowRect(bar, &br)) return c;
+    if (FAILED(uia->ElementFromHandle(bar, &root)) || !root) return c;
     // XAML elements have no window of their own; this leaves out our strip and the taskbar's legacy
     // child windows (ReBarWindow32 and friends still exist on Windows 11, with stale rectangles).
     VARIANT none;
@@ -233,15 +235,17 @@ Column MeasureColumn(IUIAutomation* uia, HWND bar) {
     int n = 0;
     // One cross-process call for all rectangles.
     if (SUCCEEDED(uia->CreatePropertyCondition(UIA_NativeWindowHandlePropertyId, none, &xaml)) && xaml &&
-        SUCCEEDED(uia->CreateCacheRequest(&req)) && req && SUCCEEDED(req->AddProperty(UIA_BoundingRectanglePropertyId)) &&
-        SUCCEEDED(root->FindAllBuildCache(TreeScope_Descendants, xaml, req, &all)) && all && SUCCEEDED(all->get_Length(&n))) {
+        SUCCEEDED(uia->CreateCacheRequest(&req)) && req &&
+        SUCCEEDED(req->AddProperty(UIA_BoundingRectanglePropertyId)) &&
+        SUCCEEDED(root->FindAllBuildCache(TreeScope_Descendants, xaml, req, &all)) && all &&
+        SUCCEEDED(all->get_Length(&n))) {
         c.measured = true;
         for (int i = 0; i < n; i++) {
             IUIAutomationElement* el = nullptr;
             RECT r{};
             // Elements reaching below the tray's top are the tray icons and the frame around everything.
-            if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CachedBoundingRectangle(&r)) && r.bottom > r.top &&
-                r.right > r.left && r.left >= br.left && r.right <= br.right && r.top >= br.top && r.bottom <= tr.top) {
+            if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CachedBoundingRectangle(&r)) &&
+                r.bottom > r.top && r.right > r.left && r.left >= br.left && r.right <= br.right && r.top >= br.top && r.bottom <= tr.top) {
                 c.top = c.any ? std::min(c.top, (int)r.top) : (int)r.top;
                 c.bottom = c.any ? std::max(c.bottom, (int)r.bottom) : (int)r.bottom;
                 c.any = true;
@@ -263,7 +267,8 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
     HWND btnBar = nullptr;
     bool column = false;  // vertical XAML taskbar: its task buttons come and go, so look more often
     for (;;) {
-        WaitForSingleObject(g_wbWake, btnBar ? (column ? 1500 : 5000) : INFINITE);  // no widget (tray-icon mode): sleep until one
+        // No widget (tray-icon mode): sleep until one.
+        WaitForSingleObject(g_wbWake, btnBar ? (column ? 1500 : 5000) : INFINITE);
         AcquireSRWLockShared(&g_wbLock);
         HWND bar = g_wbTaskbar;
         ReleaseSRWLockShared(&g_wbLock);
@@ -639,7 +644,8 @@ void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size) {
     // plus a rounded hover highlight like the system tray icons have.
     DWORD clear = 0x01000000;
     if (wnd == g_wnd && g_fill)  // bottom place on a vertical taskbar: continue the taskbar's colour
-        clear = 0xFF000000 | ((DWORD)GetRValue(g_fillColor) << 16) | ((DWORD)GetGValue(g_fillColor) << 8) | GetBValue(g_fillColor);
+        clear = 0xFF000000 | ((DWORD)GetRValue(g_fillColor) << 16) | ((DWORD)GetGValue(g_fillColor) << 8) |
+                GetBValue(g_fillColor);
     for (auto& p : cv.px) p = clear;
     auto roundRect = [&](int inset, int r, Rgb c, int a) {
         for (int y = inset; y < H - inset; y++)
@@ -1122,13 +1128,15 @@ bool Reposition() {
         AcquireSRWLockShared(&g_wbLock);
         Column col = g_column;
         ReleaseSRWLockShared(&g_wbLock);
-        bool bottom = g_place == widget::VerticalPlace::Bottom && !g_rebar && g_size.cy > 0 && g_size.cy < client.bottom / 2;
+        bool bottom = g_place == widget::VerticalPlace::Bottom && !g_rebar && g_size.cy > 0 &&
+                      g_size.cy < client.bottom / 2;
         bool wasReserved = g_reserved;  // the content has had a pass to move up
         ReserveBottom(bottom ? g_size.cy : 0);
         COLORREF fill = 0;
         bool sampled = bottom && wasReserved && SampleBarColor(bar, bar.bottom - g_size.cy, fill);
         bool changed = sampled && (!g_fill || abs(GetRValue(fill) - GetRValue(g_fillColor)) > 4 ||
-                                   abs(GetGValue(fill) - GetGValue(g_fillColor)) > 4 || abs(GetBValue(fill) - GetBValue(g_fillColor)) > 4);
+                                   abs(GetGValue(fill) - GetGValue(g_fillColor)) > 4 ||
+                                   abs(GetBValue(fill) - GetBValue(g_fillColor)) > 4);
         if (changed || (!bottom && g_fill)) {
             g_fill = bottom;
             g_fillColor = fill;
@@ -1138,7 +1146,8 @@ bool Reposition() {
             top = client.bottom - g_size.cy;
         } else if (g_place == widget::VerticalPlace::Top) {
             top = 0;
-        } else if (g_place == widget::VerticalPlace::Auto && !g_rebar && col.bar == g_taskbar && col.measured && col.any) {
+        } else if (g_place == widget::VerticalPlace::Auto && !g_rebar && col.bar == g_taskbar && col.measured &&
+                   col.any) {
             POINT first{ bar.left, col.top }, last{ bar.left, col.bottom };
             ScreenToClient(g_taskbar, &first);
             ScreenToClient(g_taskbar, &last);
