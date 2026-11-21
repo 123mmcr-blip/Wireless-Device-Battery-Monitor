@@ -512,7 +512,7 @@ void PollMarshall(PollContext& ctx) {
         DeviceStatus s;
         s.key = L"marshall:" + sp.addrText;
         s.name = sp.name;
-        s.kind = DeviceKind::Other;
+        s.kind = DeviceKind::Speaker;
         s.via = L"Bluetooth";
         s.percent = e.percent;
         s.graceSec = 600;
