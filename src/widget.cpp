@@ -44,12 +44,41 @@ HWND g_dpiBar;  // while a mirror is painted or placed, Px() uses its taskbar's 
 const wchar_t* kClass = L"WirelessBatteryWidget";
 const wchar_t* kBridgeClass = L"Windows.UI.Composition.DesktopWindowContentBridge";
 
+int Dpi() {
+    HWND bar = g_dpiBar ? g_dpiBar : g_taskbar;
+    UINT d = bar ? GetDpiForWindow(bar) : 0;
+    return d ? (int)d : 96;
+}
+int Px(int v) { return MulDiv(v, Dpi(), 96); }
+
 // Windows 11, left / right taskbar, "Bottom" place: the taskbar's XAML content (task buttons and tray) lives
 // in one child window that fills the bar. Making that window `reserve` pixels shorter moves all of its
 // content up by as much and leaves the bottom of the bar free for the column, so nothing is covered.
 // Explorer gives the window its full height back on its own layout passes, so Reposition() re-applies
 // this; 0 restores it. Only a window we shortened ourselves is ever restored.
 bool g_reserved;
+// The freed strip shows the bare taskbar window, which is not the colour the taskbar's content is drawn
+// in (acrylic, or whatever a taskbar theme sets), so the column would sit on a visible band. While the
+// bottom place is used, the column is filled with the colour found just above it instead.
+bool g_fill;
+COLORREF g_fillColor;
+
+// Reads the taskbar's colour from three points on the row just above `screenTop`. Fails when they differ
+// (text or an icon is there, e.g. before the content has moved up), so a glyph's colour is never taken.
+bool SampleBarColor(const RECT& bar, int screenTop, COLORREF& out) {
+    HDC dc = GetDC(nullptr);
+    int w = bar.right - bar.left, y = screenTop - Px(4);
+    COLORREF c[3] = { GetPixel(dc, bar.left + w / 4, y), GetPixel(dc, bar.left + w / 2, y), GetPixel(dc, bar.left + w * 3 / 4, y) };
+    ReleaseDC(nullptr, dc);
+    auto differs = [](COLORREF a, COLORREF b, int tol) {
+        return abs(GetRValue(a) - GetRValue(b)) > tol || abs(GetGValue(a) - GetGValue(b)) > tol || abs(GetBValue(a) - GetBValue(b)) > tol;
+    };
+    for (COLORREF v : c)
+        if (v == CLR_INVALID || differs(v, c[1], 10)) return false;
+    out = c[1];
+    return true;
+}
+
 void ReserveBottom(int reserve) {
     HWND bridge = g_taskbar && IsWindow(g_taskbar) ? FindWindowExW(g_taskbar, nullptr, kBridgeClass, nullptr) : nullptr;
     if (!bridge || (!reserve && !g_reserved)) { g_reserved = false; return; }
@@ -61,13 +90,6 @@ void ReserveBottom(int reserve) {
         SetWindowPos(bridge, nullptr, 0, 0, br.right - br.left, want, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     g_reserved = reserve > 0;
 }
-
-int Dpi() {
-    HWND bar = g_dpiBar ? g_dpiBar : g_taskbar;
-    UINT d = bar ? GetDpiForWindow(bar) : 0;
-    return d ? (int)d : 96;
-}
-int Px(int v) { return MulDiv(v, Dpi(), 96); }
 
 // Windows 11 puts the Widgets (weather) button right next to the tray when the taskbar is
 // left-aligned (start-aligned on right-to-left Windows). It is XAML, so only UI Automation knows
@@ -544,8 +566,10 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     bool stacked = !g_vertical && g_stacked && !slots.empty() && barH >= iconH + rowGap + textH + barRoom + Px(6);
     if (g_vertical) {
         // One block per device, centred in the bar's width: icon, then the percentage (and bolt) under it.
+        // Spaced like the notification area's own icons, so the column reads as part of it.
         width = barW;
-        int y = Px(6);
+        const int pad = Px(10), blockGap = Px(12), iconGap = Px(3);
+        int y = pad;
         if (slots.empty()) {
             // No devices yet (startup, or the last one disconnected): only the placeholder icon. Without this
             // branch the row layout below would keep height = barH, and on a left / right taskbar barH is the
@@ -553,7 +577,7 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
             Piece& ic = out[0];
             ic.px = (barW - ic.m.w) / 2;
             ic.py = y;
-            height = y + ic.m.h + Px(6);
+            height = y + ic.m.h + pad;
             return out;
         }
         for (const Slot& s : slots) {
@@ -562,16 +586,16 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
             int boltW = s.bolt >= 0 ? Px(2) + out[s.bolt].m.w : 0;
             ic.px = (barW - ic.m.w) / 2;
             ic.py = y;
-            y += ic.m.h + rowGap;
+            y += ic.m.h + iconGap;
             lb.px = (barW - lb.m.w - boltW) / 2;
             lb.py = y;
             if (s.bolt >= 0) {
                 out[s.bolt].px = lb.px + lb.m.w + Px(2);
                 out[s.bolt].py = y + (lb.m.h - out[s.bolt].m.h) / 2;
             }
-            y += lb.m.h + (lb.barPct >= 0 ? barRoom : 0) + Px(8);
+            y += lb.m.h + (lb.barPct >= 0 ? barRoom : 0) + blockGap;
         }
-        height = y;
+        height = y - blockGap + pad;
         return out;
     }
     if (stacked) {
@@ -613,7 +637,10 @@ void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size) {
 
     // Nearly transparent background so the whole strip receives mouse input,
     // plus a rounded hover highlight like the system tray icons have.
-    for (auto& p : cv.px) p = 0x01000000;
+    DWORD clear = 0x01000000;
+    if (wnd == g_wnd && g_fill)  // bottom place on a vertical taskbar: continue the taskbar's colour
+        clear = 0xFF000000 | ((DWORD)GetRValue(g_fillColor) << 16) | ((DWORD)GetGValue(g_fillColor) << 8) | GetBValue(g_fillColor);
+    for (auto& p : cv.px) p = clear;
     auto roundRect = [&](int inset, int r, Rgb c, int a) {
         for (int y = inset; y < H - inset; y++)
             for (int x = 0; x < W; x++) {
@@ -991,6 +1018,7 @@ void Destroy() {
     }
     g_rebar = nullptr;
     ReserveBottom(0);  // give the taskbar its full height back
+    g_fill = false;
     for (auto& m : g_mirrors) DestroyMirror(m);
     g_mirrors.clear();
     SetMeasureMirrors(false);
@@ -1095,7 +1123,17 @@ bool Reposition() {
         Column col = g_column;
         ReleaseSRWLockShared(&g_wbLock);
         bool bottom = g_place == widget::VerticalPlace::Bottom && !g_rebar && g_size.cy > 0 && g_size.cy < client.bottom / 2;
+        bool wasReserved = g_reserved;  // the content has had a pass to move up
         ReserveBottom(bottom ? g_size.cy : 0);
+        COLORREF fill = 0;
+        bool sampled = bottom && wasReserved && SampleBarColor(bar, bar.bottom - g_size.cy, fill);
+        bool changed = sampled && (!g_fill || abs(GetRValue(fill) - GetRValue(g_fillColor)) > 4 ||
+                                   abs(GetGValue(fill) - GetGValue(g_fillColor)) > 4 || abs(GetBValue(fill) - GetBValue(g_fillColor)) > 4);
+        if (changed || (!bottom && g_fill)) {
+            g_fill = bottom;
+            g_fillColor = fill;
+            Paint();
+        }
         if (bottom) {
             top = client.bottom - g_size.cy;
         } else if (g_place == widget::VerticalPlace::Top) {
@@ -1127,6 +1165,7 @@ bool Reposition() {
         return true;
     }
     ReserveBottom(0);  // the taskbar was moved from a vertical edge to a horizontal one
+    if (g_fill) { g_fill = false; Paint(); }
     // Right-to-left Windows (Hebrew, Arabic) mirrors the taskbar: client x runs from the screen's right
     // edge, so a window's client-space left edge is its screen-space right edge.
     bool rtl = GetWindowLongW(g_taskbar, GWL_EXSTYLE) & WS_EX_LAYOUTRTL;
