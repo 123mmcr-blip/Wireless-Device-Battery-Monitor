@@ -268,16 +268,14 @@ bool Cloud3S(const HidColl& c, DeviceStatus& s) {
 // From github.com/davidsantanaalves/HyperBatteryMonitor (Devices/CloudStingerCoreWirelessDevice.cs, MIT);
 // the PlayStation receiver 03F0:0A93 was verified on hardware there (PR #6: 52 queries, codes 03/05/06).
 // SetFeature(command), wait 20 ms, GetFeature(FF):
-//   connection: reply [11] == 1 means the headset is on.
-//   battery:    reply [9] = 03 discharging / 05 charging / 06 full, [11..12] = battery mV (little endian).
-// The PlayStation receivers (03F0:0A93, 0951:1713) and DTS receiver (03F0:0A8E) can hand back a previous report;
-// their battery reply is FF 12 05, so on them the reply is read again (up to 10 x 20 ms) until it looks right.
-// 0951:1713 (Kingston PlayStation receiver, same MI_03 layout as 0A93) was verified on hardware.
-// 0951:173F (Kingston receiver of the Cloud Core Wireless DTS, same MI_03 layout) was verified on hardware:
-// connection reply [11] == 1 when the headset is on, 3 when it is off; battery reply FF 12 05 with [9] == 03
-// while discharging and 05 while charging. The mV-to-percent curve is the Stinger Core one, not calibrated for
-// this model.
-// DTS 03F0:0A8E: battery/charging verified on Windows; same FF 12 05 reply (HyperBatteryMonitor PR #16).
+//   connection: reply [11] == 1 means the headset is on (3 when off; header FF 0C 05 on 0951:170B).
+//   battery:    reply FF 12 05, [9] = 03 discharging / 05 charging / 06 full, [11..12] = battery mV (LE).
+// All five receivers (03F0:0A93, 03F0:0A8E, 0951:170B, 0951:1713, 0951:173F) can return a stale previous
+// report with header FF 01 00 at 20 ms before the fresh reply arrives (observed at 40 ms on 0951:170B,
+// where reading the stale connection reply as battery produced 0x0E01 = 3585 mV / 5% or dropped the reading).
+// Replies are therefore polled up to 10 x 20 ms until a fresh connection or FF 12 05 battery frame arrives.
+// Hardware verified: 0951:170B (discharging, charging, off), 0951:1713, 0951:173F (Cloud Core Wireless DTS,
+// using the Stinger Core mV curve), and 03F0:0A8E (HyperBatteryMonitor PR #16).
 bool StingerCore(const HidColl& c, DeviceStatus& s) {
     static const std::vector<BYTE> kConnection = { 0xFF, 0x07, 0x00, 0xFD, 0x04, 0x00, 0x00, 0x02, 0x82, 0x03,
                                                    0x05, 0x29, 0x0F, 0x00, 0x00, 0x03, 0x68, 0x10, 0x00, 0x00 };
@@ -289,22 +287,23 @@ bool StingerCore(const HidColl& c, DeviceStatus& s) {
 
     HidDev d;
     if (!d.Open(c)) return false;
-    const bool ps = c.pid == 0x0A93 || c.pid == 0x1713 || c.pid == 0x173F || c.pid == 0x0A8E;
     auto exchange = [&](const std::vector<BYTE>& cmd, std::vector<BYTE>& r, bool (*good)(const std::vector<BYTE>&)) {
         if (!d.SetFeature(cmd)) return false;
-        for (int i = 0; i < (ps ? 10 : 1); i++) {
+        for (int i = 0; i < 10; i++) {
             Sleep(20);
             if (!d.GetFeature(0xFF, r) || r.size() < 13) return false;
-            if (!ps || good(r)) return true;
+            if (good(r)) return true;
         }
         return false;
     };
-    auto fresh = [](const std::vector<BYTE>& r) { return !(r[1] == 0x01 && r[2] == 0x00); };
+    auto fresh = [](const std::vector<BYTE>& r) {
+        return !(r[1] == 0x01 && r[2] == 0x00) && !(r[1] == 0x12 && r[2] == 0x05);
+    };
     auto battery = [](const std::vector<BYTE>& r) { return r[0] == 0xFF && r[1] == 0x12 && r[2] == 0x05; };
 
     std::vector<BYTE> r;
-    // The connection reply's header isn't documented, so after 10 stale-looking reads the last one is used.
-    if (!exchange(kConnection, r, fresh) && !(ps && r.size() >= 13 && !fresh(r))) return false;
+    // Some receivers/fixtures only expose FF 01 00 on connection reads, so keep the last one after 10 retries.
+    if (!exchange(kConnection, r, fresh) && !(r.size() >= 13 && r[1] == 0x01 && r[2] == 0x00)) return false;
     s = Base(c.pid, c.pid == 0x173F ? L"HyperX Cloud Core Wireless"
                   : c.pid == 0x0A8E ? L"HyperX Cloud Stinger Core Wireless DTS"
                   : L"HyperX Cloud Stinger Core Wireless");
