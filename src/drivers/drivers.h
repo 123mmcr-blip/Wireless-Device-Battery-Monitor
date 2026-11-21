@@ -15,6 +15,10 @@ struct PollContext
     std::set<std::pair<USHORT, USHORT>> claimed;
     std::set<std::wstring> btContainers; // container ids PollBluetooth already reported
     std::vector<DeviceStatus> out;
+    // Device keys that already had battery readings in the history when the app started (null in tests and
+    // with history recording off). A driver can trust such a device to be real even when it is silent now.
+    const std::set<std::wstring>* seenBefore = nullptr;
+    bool SeenBefore(const std::wstring &key) const { return seenBefore && seenBefore->count(key) != 0; }
 
     bool IsClaimed(USHORT vid, USHORT pid) const { return claimed.count({vid, pid}) != 0; }
     void Claim(USHORT vid, USHORT pid) { claimed.insert({vid, pid}); }
