@@ -1140,6 +1140,11 @@ void ShowMenu() {
         bool canLeft = pos != shown.end() && pos != shown.begin();
         bool canRight = pos != shown.end() && pos + 1 != shown.end();
         HMENU sub = CreatePopupMenu();
+        if (!e->st.via.empty()) {  // the connection, moved off the device line (PR #3292)
+            const auto connection = TF(L"Connection: {connection}", { { L"connection", T(e->st.via) } });
+            AppendMenuW(sub, MF_STRING | MF_GRAYED, 0, connection.c_str());
+            AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        }
         AppendMenuW(sub, MF_STRING | (IsHidden(k) ? 0 : MF_CHECKED), base + DEV_TOGGLE,
                     g_wantWidget ? T(L"Show on the taskbar") : T(L"Show in the tray"));
         AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
@@ -1167,16 +1172,12 @@ void ShowMenu() {
         icons.SetLast(sub, 0xEA8F);  // Ringer
         AppendMenuW(sub, MF_STRING, base + DEV_HISTORY, T(L"Battery history..."));
         icons.SetLast(sub, 0xE81C);  // History
-        std::wstring line = DisplayName(*e) + L":  " + StatusText(*e) + L"   [" + T(e->st.via) + L"]";
+        std::wstring line = DisplayName(*e) + L"  ·  " + StatusText(*e);
         AppendMenuW(m, MF_POPUP | (IsHidden(k) ? 0 : MF_CHECKED), (UINT_PTR)sub, line.c_str());
         icons.SetLast(m, widget::DeviceGlyph(e->st.kind, e->st.via == L"Bluetooth"));
         keys.push_back(k);
     }
-    AppendMenuW(m, MF_STRING | (g_hideLastKnown ? MF_CHECKED : 0), ID_HIDE_LAST_KNOWN, T(L"Hide last known / asleep devices"));
-    UINT emptyFlags = MF_STRING | (g_trayWhenEmpty ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
-    AppendMenuW(m, emptyFlags, ID_TRAY_WHEN_EMPTY, T(L"Move to tray when no devices"));
-    AppendMenuW(m, MF_STRING | (g_showDisconnectedDevices ? MF_CHECKED : 0), ID_SHOW_DISCONNECTED, T(L"Show disconnected devices"));
-    AppendMenuW(m, MF_STRING | (g_dimSleeping ? MF_CHECKED : 0), ID_DIM_SLEEPING, T(L"Dim sleeping devices"));
+    if (!all.empty()) AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (g_recordHistory ? MF_CHECKED : 0), ID_RECORD_HISTORY, T(L"Record battery history"));
     {
         HMENU sub = CreatePopupMenu();
@@ -1191,17 +1192,20 @@ void ShowMenu() {
         AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Notify when charged to (saves the battery)"));
     }
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING | (g_wantWidget ? MF_CHECKED : 0), ID_MODE_WIDGET, T(L"Show on the taskbar (icon + percentage)"));
-    AppendMenuW(m, MF_STRING | (!g_wantWidget ? MF_CHECKED : 0), ID_MODE_TRAY, T(L"Show as tray icons"));
-    CheckMenuRadioItem(m, ID_MODE_WIDGET, ID_MODE_TRAY, g_wantWidget ? ID_MODE_WIDGET : ID_MODE_TRAY, MF_BYCOMMAND);
+    // Display settings (PR #3292): how and where the devices are shown, in one submenu.
+    HMENU display = CreatePopupMenu();
+    AppendMenuW(display, MF_STRING | (g_wantWidget ? MF_CHECKED : 0), ID_MODE_WIDGET, T(L"Show on the taskbar (icon + percentage)"));
+    AppendMenuW(display, MF_STRING | (!g_wantWidget ? MF_CHECKED : 0), ID_MODE_TRAY, T(L"Show as tray icons"));
+    CheckMenuRadioItem(display, ID_MODE_WIDGET, ID_MODE_TRAY, g_wantWidget ? ID_MODE_WIDGET : ID_MODE_TRAY, MF_BYCOMMAND);
+    AppendMenuW(display, MF_SEPARATOR, 0, nullptr);
     UINT bgFlags = MF_STRING | (g_widgetBackground ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
-    AppendMenuW(m, bgFlags, ID_WIDGET_BACKGROUND, T(L"Background behind taskbar text (for transparent taskbars)"));
-    AppendMenuW(m, MF_STRING | (g_stacked ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_STACKED, T(L"Icons above percentages (narrower)"));
-    AppendMenuW(m, MF_STRING | (g_showPercentSign ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_PERCENT_SIGN,
+    AppendMenuW(display, bgFlags, ID_WIDGET_BACKGROUND, T(L"Background behind taskbar text (for transparent taskbars)"));
+    AppendMenuW(display, MF_STRING | (g_stacked ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_STACKED, T(L"Icons above percentages (narrower)"));
+    AppendMenuW(display, MF_STRING | (g_showPercentSign ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_PERCENT_SIGN,
                 T(L"Show percent sign (%)"));
-    AppendMenuW(m, MF_STRING | (g_ringStyle ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_RING_STYLE,
+    AppendMenuW(display, MF_STRING | (g_ringStyle ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_RING_STYLE,
                 T(L"Ring style (icon inside a battery ring)"));
-    AppendMenuW(m, MF_STRING | (g_connectionIcons ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_CONNECTION_ICONS,
+    AppendMenuW(display, MF_STRING | (g_connectionIcons ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_CONNECTION_ICONS,
                 T(L"Mark devices on a 2.4 GHz receiver"));
     {
         HMENU sub = CreatePopupMenu();
@@ -1224,7 +1228,7 @@ void ShowMenu() {
         CheckMenuRadioItem(sub, ID_POSITION_FIRST, ID_POSITION_FIRST + count, checked, MF_BYCOMMAND);
         AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(sub, f | (g_makeRoom ? MF_CHECKED : 0), ID_MAKE_ROOM, T(L"Make room for other taskbar widgets"));
-        AppendMenuW(m, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, T(L"Position on the taskbar"));
+        AppendMenuW(display, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, T(L"Position on the taskbar"));
     }
     // Left / right taskbar: choose where the column sits.
     if (widget::Vertical()) {
@@ -1239,10 +1243,10 @@ void ShowMenu() {
                            : g_verticalPlace == widget::VerticalPlace::AboveTray ? ID_PLACE_TRAY
                            : g_verticalPlace == widget::VerticalPlace::Bottom ? ID_PLACE_BOTTOM : ID_PLACE_AUTO,
                            MF_BYCOMMAND);
-        AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Position on a vertical taskbar"));
+        AppendMenuW(display, MF_POPUP, (UINT_PTR)sub, T(L"Position on a vertical taskbar"));
     }
-    AppendMenuW(m, MF_STRING | (g_farLeft ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_FAR_LEFT, T(L"At the left end of the taskbar"));
-    AppendMenuW(m, MF_STRING | (g_beforeApps ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_BEFORE_APPS,
+    AppendMenuW(display, MF_STRING | (g_farLeft ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_FAR_LEFT, T(L"At the left end of the taskbar"));
+    AppendMenuW(display, MF_STRING | (g_beforeApps ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_BEFORE_APPS,
                 T(L"Just before the taskbar apps"));
     // With more than one monitor: choose which taskbars show the widget (all, main only, or one monitor).
     auto monitors = widget::OtherMonitors();
@@ -1266,10 +1270,18 @@ void ShowMenu() {
             checked = ID_MONITOR_FIRST + 31;
         }
         CheckMenuRadioItem(sub, ID_MONITOR_ALL, ID_MONITOR_FIRST + 31, checked, MF_BYCOMMAND);
-        AppendMenuW(m, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, T(L"Show the widget on"));
-        icons.SetLast(m, 0xE7F4);  // TVMonitor
+        AppendMenuW(display, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, T(L"Show the widget on"));
+        icons.SetLast(display, 0xE7F4);  // TVMonitor
     }
-    AppendMenuW(m, MF_STRING | (g_brandColors ? MF_CHECKED : 0), ID_BRAND_COLORS, T(L"Brand colors (Razer green, Logitech blue, ...)"));
+    AppendMenuW(display, MF_STRING | (g_brandColors ? MF_CHECKED : 0), ID_BRAND_COLORS, T(L"Brand colors (Razer green, Logitech blue, ...)"));
+    AppendMenuW(display, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(display, MF_STRING | (g_hideLastKnown ? MF_CHECKED : 0), ID_HIDE_LAST_KNOWN, T(L"Hide last known / asleep devices"));
+    UINT emptyFlags = MF_STRING | (g_trayWhenEmpty ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
+    AppendMenuW(display, emptyFlags, ID_TRAY_WHEN_EMPTY, T(L"Move to tray when no devices"));
+    AppendMenuW(display, MF_STRING | (g_showDisconnectedDevices ? MF_CHECKED : 0), ID_SHOW_DISCONNECTED, T(L"Show disconnected devices"));
+    AppendMenuW(display, MF_STRING | (g_dimSleeping ? MF_CHECKED : 0), ID_DIM_SLEEPING, T(L"Dim sleeping devices"));
+    AppendMenuW(m, MF_POPUP, (UINT_PTR)display, T(L"Display settings"));
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     // Language: automatic, every built-in or user-added language (in its own name), and a way to add one.
     i18n::Init();  // picks up language files added since the last time
