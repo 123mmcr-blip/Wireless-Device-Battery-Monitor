@@ -105,6 +105,7 @@ void PollRawm(PollContext& ctx);      // RAWM mice (Leviathan V4, ES21, ...) and
 void PollRongyuan(PollContext& ctx);  // Rongyuan receivers (Attack Shark, Ajazz keyboards, ...)
 
 void PollSonyInzone(PollContext& ctx);  // Sony INZONE H9 II / H5 / Buds (HID), H9 / H7 (serial port)
+void PollPlayStationLink(PollContext& ctx);  // PULSE Explore earbuds on the PlayStation Link adapter (054C:0ECC)
 void PollSonix(PollContext& ctx);     // SONiX keyboards on their 2.4 GHz dongle (AJAZZ AK820 MAX, AK980 V2, AULA F108 Pro)
 void PollViaDongle(PollContext& ctx);  // 36B0:3002 dongle (PMO Hub or VIA firmware) and PMO Hub keyboards on their cable (Wave 75, Aurora 80, P75, PMO 80)
 

@@ -538,3 +538,4 @@ The protocols come from these projects' research:
 [GNU General Public License v3.0 or later](LICENSE). You may use, modify and redistribute this
 software, but anything you distribute that is based on it must be released under the same license,
 with its source code.
+| **Sony PULSE Explore** | PULSE Explore earbuds on the PlayStation Link USB adapter (`054C:0ECC`, tested); left and right levels in the tooltip. Charging state and the case level are not read; the PULSE Elite headset on the same adapter is not covered | Read-only feature reports `82` / `A0` / `B0` on `FF01:0020`, as polled by the PlayStation Link PC app; `B0` byte 55 = left (low nibble) and right (high nibble) level on a 0-15 scale |
