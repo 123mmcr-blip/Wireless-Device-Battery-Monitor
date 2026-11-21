@@ -22,8 +22,8 @@ HidColl Collection() {
     return c;
 }
 
-std::vector<BYTE> Battery(BYTE percent) {
-    std::vector<BYTE> r = {0x55, 0x65, percent, 0x02};
+std::vector<BYTE> Battery(BYTE percent, BYTE powerState = 0x02) {
+    std::vector<BYTE> r = {0x55, 0x65, percent, powerState};
     r.resize(64);
     return r;
 }
@@ -63,14 +63,33 @@ int main() {
     PollAulaHeadset(ctx);
     assert(opens == 1 && ctx.out.empty() && ctx.claimed.empty());
 
-    for (BYTE percent : {0, 37, 100}) {
+    struct Scenario {
+        BYTE percent;
+        BYTE powerState;
+        bool charging;
+        bool full;
+    };
+    for (const Scenario scenario : {Scenario{0, 0x02, false, false},
+                                    Scenario{37, 0x02, false, false},
+                                    Scenario{100, 0x02, false, false},
+                                    Scenario{0, 0x00, true, false},
+                                    Scenario{37, 0x00, true, false},
+                                    Scenario{90, 0x00, true, false},
+                                    Scenario{100, 0x00, false, true}}) {
         PollContext current;
         current.colls = ctx.colls;
-        replies = {Battery(0xFF), Battery(percent)};
+        replies = {Battery(0xFF), Battery(scenario.percent, scenario.powerState)};
         PollAulaHeadset(current);
         assert(current.out.size() == 1 && current.IsClaimed(0x38A6, 0x0001));
         const auto& s = current.out.front();
-        assert(s.percent == percent && s.kind == DeviceKind::Headset && !s.charging);
+        assert(s.percent == scenario.percent && s.kind == DeviceKind::Headset);
+        assert(s.charging == scenario.charging && s.full == scenario.full);
         assert(s.key == L"aula:a7pro" && s.via == L"2.4 GHz receiver");
     }
+
+    PollContext malformed;
+    malformed.colls = ctx.colls;
+    replies = {Battery(90, 0x01)};
+    PollAulaHeadset(malformed);
+    assert(malformed.out.empty());
 }
