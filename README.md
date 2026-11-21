@@ -533,3 +533,5 @@ The protocols come from these projects' research:
 [GNU General Public License v3.0 or later](LICENSE). You may use, modify and redistribute this
 software, but anything you distribute that is based on it must be released under the same license,
 with its source code.
+| **Pulsar PRO Dongle** | ZYWOO The Chosen X on the `3710:5405` receiver | Captured B4 status query/reply (battery percentage observed at 100%, charging flag) |
+| **Pulsar ZYWOO The Chosen X** | Wired mouse (`3710:7401`) | Captured B4 status query/reply (battery percentage observed at 100%, charging flag) |
