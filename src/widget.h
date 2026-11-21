@@ -34,6 +34,8 @@ void SetLightTheme(bool light);
 void SetBackground(bool on);
 // Icon above the percentage instead of beside it, when the taskbar is tall enough (kept across Create/Destroy).
 void SetStacked(bool on);
+// Include '%' after numeric battery levels (kept across Create/Destroy).
+void SetShowPercentSign(bool on);
 // Steps past other apps' widgets in the taskbar (e.g. a network graph or a countdown) that sit where the
 // strip would go, so both stay readable (kept across Create/Destroy).
 void SetMakeRoom(bool on);

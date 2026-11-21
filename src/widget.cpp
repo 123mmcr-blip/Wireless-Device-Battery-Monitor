@@ -14,6 +14,7 @@ UINT g_clickMsg;
 bool g_light, g_hover;
 bool g_background;  // opaque rounded plate behind the text, for transparent / restyled taskbars
 bool g_stacked;     // icon above the percentage (menu option, PR #525)
+bool g_showPercentSign = true;  // '%' after numeric levels (menu option, PR #1386)
 bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
 bool g_makeRoom = true;  // step past other apps' widgets in the taskbar instead of covering them
 widget::VerticalPlace g_place = widget::VerticalPlace::Auto;  // where the column sits on such a taskbar (menu option)
@@ -612,7 +613,7 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
             icon.haloAlpha = g_light ? 60 : 140;
         }
         out.push_back(std::move(icon));
-        std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
+        std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + (g_showPercentSign ? L"%" : L"") : L"?";
         Piece label{ RenderMask(t, text, g_light), tc, a, mark ? Px(2) : 0 };
         if (branded && it.percent >= 0) {
             label.barPct = it.percent;
@@ -1199,6 +1200,12 @@ void SetLightTheme(bool light) {
 void SetBackground(bool on) {
     g_background = on;
     PaintAll();
+}
+
+void SetShowPercentSign(bool on) {
+    g_showPercentSign = on;
+    PaintAll();
+    if (g_wnd) Reposition();
 }
 
 void SetStacked(bool on) {
