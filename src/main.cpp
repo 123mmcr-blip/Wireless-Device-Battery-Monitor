@@ -31,6 +31,7 @@
 #include "memory_trim.h"
 #include "report.h"
 #include "rename_dialog.h"
+#include "offset_dialog.h"
 #include "widget.h"
 #include "update_win.h"
 #include "update_apply.h"
@@ -57,7 +58,8 @@ constexpr UINT ALERT_ICON_ID = 2;
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
-    ID_TRAY_WHEN_EMPTY,
+    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM,
+    ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_LIMIT_OFF = 600, ID_LIMIT_FIRST,  // "Notify when charged to": off, then alerts::kChargeLimits
     ID_UPDATE = 200, ID_AUTO_UPDATE,
@@ -93,6 +95,10 @@ int g_chargeLimit = 0;        // "Notify when charged to" 80/85/90%, 0 = off (th
 std::wstring g_widgetMonitor = L"all";  // which taskbars show the widget: "all", "main" or one monitor id
 bool g_widgetBackground = false;  // draw a plate behind the taskbar text (transparent taskbar themes)
 bool g_stacked = false;      // icon above the percentage (menu option)
+bool g_makeRoom = true;      // step past other apps' taskbar widgets (menu option)
+// "Position on the taskbar": distance from the notification area in DPI-independent pixels. Stored as
+// the TaskbarOffset value the widget has always read, so a value set by hand keeps working.
+const int POSITION_OFFSETS[] = { 0, 40, 80, 120, 160, 200 };
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
 std::atomic<DWORD> g_pollIntervalMs{ 60 * 1000 };  // set from the menu, read by the worker thread
 
@@ -369,6 +375,19 @@ void SaveShowDisconnectedDevices(bool on) { SaveBoolSetting(L"ShowDisconnectedDe
 bool LoadDimSleeping() { return LoadBoolSetting(L"DimSleepingDevices", true); }
 void SaveDimSleeping(bool on) { SaveBoolSetting(L"DimSleepingDevices", on); }
 bool LoadRecordHistory() { return LoadBoolSetting(L"RecordBatteryHistory", true); }
+bool LoadMakeRoom() { return LoadBoolSetting(L"MakeRoomForOtherWidgets", true); }
+void SaveMakeRoom(bool on) { SaveBoolSetting(L"MakeRoomForOtherWidgets", on); }
+// Signed: stored as a DWORD, read back as int, so negative values move the widget towards the tray.
+int LoadTaskbarOffset() {
+    DWORD v = 0, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"TaskbarOffset", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return (int)v;
+}
+void SaveTaskbarOffset(int px) {
+    DWORD v = (DWORD)px;
+    if (px) RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"TaskbarOffset", REG_DWORD, &v, sizeof(v));
+    else RegDeleteKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"TaskbarOffset");
+}
 void SaveRecordHistory(bool on) { SaveBoolSetting(L"RecordBatteryHistory", on); }
 bool LoadWidgetBackground() { return LoadBoolSetting(L"WidgetBackground", false); }
 void SaveWidgetBackground(bool on) { SaveBoolSetting(L"WidgetBackground", on); }
@@ -904,6 +923,17 @@ void SetStacked(bool on) {
     widget::SetStacked(on);
 }
 
+void SetMakeRoom(bool on) {
+    g_makeRoom = on;
+    SaveMakeRoom(on);
+    widget::SetMakeRoom(on);
+}
+
+void SetTaskbarOffset(int px) {
+    SaveTaskbarOffset(px);
+    if (g_useWidget) widget::Reposition();
+}
+
 void SetBrandColors(bool on) {
     g_brandColors = on;
     SaveBrandColors(on);
@@ -1066,6 +1096,29 @@ void ShowMenu() {
     UINT bgFlags = MF_STRING | (g_widgetBackground ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED);
     AppendMenuW(m, bgFlags, ID_WIDGET_BACKGROUND, T(L"Background behind taskbar text (for transparent taskbars)"));
     AppendMenuW(m, MF_STRING | (g_stacked ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_STACKED, T(L"Icons above percentages (narrower)"));
+    {
+        HMENU sub = CreatePopupMenu();
+        UINT f = MF_STRING | (g_wantWidget ? 0 : MF_GRAYED);
+        const UINT count = ARRAYSIZE(POSITION_OFFSETS);
+        const int current = LoadTaskbarOffset();
+        UINT checked = ID_POSITION_FIRST + count;
+        for (UINT i = 0; i < count; i++) {
+            int px = POSITION_OFFSETS[i];
+            std::wstring label = px ? TF(L"{px} px from the notification area", { { L"px", std::to_wstring(px) } })
+                                    : T(L"Next to the notification area");
+            AppendMenuW(sub, f, ID_POSITION_FIRST + i, label.c_str());
+            if (px == current) checked = ID_POSITION_FIRST + i;
+        }
+        // Any other value (typed in, or set by hand in the registry) shows as the custom entry.
+        std::wstring custom = checked == ID_POSITION_FIRST + count
+                                  ? TF(L"Custom ({px} px)...", { { L"px", std::to_wstring(current) } })
+                                  : std::wstring(T(L"Custom..."));
+        AppendMenuW(sub, f, ID_POSITION_FIRST + count, custom.c_str());
+        CheckMenuRadioItem(sub, ID_POSITION_FIRST, ID_POSITION_FIRST + count, checked, MF_BYCOMMAND);
+        AppendMenuW(sub, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(sub, f | (g_makeRoom ? MF_CHECKED : 0), ID_MAKE_ROOM, T(L"Make room for other taskbar widgets"));
+        AppendMenuW(m, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, T(L"Position on the taskbar"));
+    }
     // With more than one monitor: choose which taskbars show the widget (all, main only, or one monitor).
     auto monitors = widget::OtherMonitors();
     if (monitors.size() > 31) monitors.resize(31);
@@ -1178,6 +1231,7 @@ void ShowMenu() {
         case ID_MONITOR_MAIN: SetWidgetMonitor(L"main"); break;
         case ID_BRAND_COLORS: SetBrandColors(!g_brandColors); break;
         case ID_STACKED: SetStacked(!g_stacked); break;
+        case ID_MAKE_ROOM: SetMakeRoom(!g_makeRoom); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
@@ -1186,6 +1240,15 @@ void ShowMenu() {
         case ID_AUTO_UPDATE: updates::ToggleAutomatic(); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
         default:
+            if (cmd >= ID_POSITION_FIRST && cmd < ID_POSITION_FIRST + ARRAYSIZE(POSITION_OFFSETS)) {
+                SetTaskbarOffset(POSITION_OFFSETS[cmd - ID_POSITION_FIRST]);
+                break;
+            }
+            if (cmd == ID_POSITION_FIRST + ARRAYSIZE(POSITION_OFFSETS)) {
+                int px = 0;
+                if (PromptTaskbarOffset(g_hwnd, LoadTaskbarOffset(), px)) SetTaskbarOffset(px);
+                break;
+            }
             if (cmd >= ID_LIMIT_FIRST && cmd < ID_LIMIT_FIRST + (UINT)alerts::kChargeLimitCount) {
                 SetChargeLimit(alerts::kChargeLimits[cmd - ID_LIMIT_FIRST]);
             } else if (cmd >= ID_POLL_FIRST && cmd < ID_POLL_FIRST + ARRAYSIZE(POLL_SECONDS)) {
@@ -1654,6 +1717,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_widgetBackground = LoadWidgetBackground();
     g_brandColors = LoadBrandColors();
     g_stacked = LoadStacked();
+    g_makeRoom = LoadMakeRoom();
+    widget::SetMakeRoom(g_makeRoom);
     g_pollIntervalMs = LoadPollSeconds() * 1000;
     widget::SetStacked(g_stacked);
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
