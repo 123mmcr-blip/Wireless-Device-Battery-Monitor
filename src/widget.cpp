@@ -1359,14 +1359,26 @@ int StepPastOtherWidgets(int edge, const RECT& bar, bool vertical, bool rtl) {
     GetWindowThreadProcessId(g_taskbar, &explorer);
     const DWORD self = GetCurrentProcessId();
     const LONG span = vertical ? bar.bottom - bar.top : bar.right - bar.left;
+    // Candidates: the taskbar's own child windows, and (from PR #1970) top-level windows of other apps that
+    // float over the taskbar, lying entirely inside it (e.g. a monitor gadget docked onto the taskbar).
+    std::vector<RECT> others;
+    auto consider = [&](HWND c, bool topLevel) {
+        if (c == g_wnd || !IsWindowVisible(c)) return;
+        GetWindowThreadProcessId(c, &pid);
+        RECT r;
+        if (pid == explorer || pid == self || !GetWindowRect(c, &r) || r.right <= r.left || r.bottom <= r.top) return;
+        // A window docked over the taskbar has to be topmost to show there; anything else is just behind it.
+        if (topLevel && (!(GetWindowLongW(c, GWL_EXSTYLE) & WS_EX_TOPMOST) || r.left < bar.left || r.right > bar.right ||
+                         r.top < bar.top || r.bottom > bar.bottom))
+            return;
+        if ((vertical ? r.bottom - r.top : r.right - r.left) > span / 3) return;  // not a small widget
+        others.push_back(r);
+    };
+    for (HWND c = GetWindow(g_taskbar, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) consider(c, false);
+    for (HWND w = GetTopWindow(nullptr); w; w = GetWindow(w, GW_HWNDNEXT)) consider(w, true);
     for (int pass = 0; pass < 8; pass++) {
         bool moved = false;
-        for (HWND c = GetWindow(g_taskbar, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) {
-            if (c == g_wnd || !IsWindowVisible(c)) continue;
-            GetWindowThreadProcessId(c, &pid);
-            RECT r;
-            if (pid == explorer || pid == self || !GetWindowRect(c, &r) || r.right <= r.left || r.bottom <= r.top) continue;
-            if ((vertical ? r.bottom - r.top : r.right - r.left) > span / 3) continue;  // not a small widget
+        for (const RECT& r : others) {
             if (vertical) {
                 if (r.right > bar.left && r.left < bar.right && r.bottom >= edge - Px(16) && r.bottom <= edge + Px(4) &&
                     r.top < edge)
