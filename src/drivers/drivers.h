@@ -82,6 +82,7 @@ void PollAtkMercury(PollContext& ctx); // ATK Mercury I / M1 headset (373B:107C 
 void PollKeychron(PollContext& ctx);  // Keychron mice (incl. Ultra-Link 8K receiver), Nape Pro trackball (Link-KM receiver)
 void PollCherry(PollContext& ctx);    // CHERRY MX 3.0S Wireless (FF1C channel) and the Cherry XTRFY 1K mouse receiver (046A:0330, CompX protocol)
 void PollNuphy(PollContext& ctx);     // NuPhy WH80 over USB cable (19F5:A011)
+void PollWobkey(PollContext& ctx);    // Wobkey Rainy75 V2 keyboard (36B0:3071 receiver / 36B0:3075 cable)
 void PollArbiter(PollContext& ctx);   // Arbiter Studio Akitsu mice on 373E (before Lamzu, same vendor id)
 void PollLamzu(PollContext& ctx);     // LAMZU mice on vendor ids 373E / 37B0
 void PollEndgame(PollContext& ctx);   // Endgame Gear 4K mice (OP1w 4k, XM2w 4k) on the 4K dongle

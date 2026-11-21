@@ -539,3 +539,6 @@ The protocols come from these projects' research:
 software, but anything you distribute that is based on it must be released under the same license,
 with its source code.
 | **Sony PULSE Explore** | PULSE Explore earbuds on the PlayStation Link USB adapter (`054C:0ECC`, tested); left and right levels in the tooltip. Charging state and the case level are not read; the PULSE Elite headset on the same adapter is not covered | Read-only feature reports `82` / `A0` / `B0` on `FF01:0020`, as polled by the PlayStation Link PC app; `B0` byte 55 = left (low nibble) and right (high nibble) level on a 0-15 scale |
+- **Brand colors:** devices of 16 known brands get their maker's color, with a soft glow and a thin level bar under the
+  Xbox, Samsung, Apple, Jabra, JBL, Cooler Master, Steam and Wobkey. Each color has a dark- and a light-taskbar shade. The brand
+| **Wobkey** | Rainy75 V2 keyboard on its 2.4 GHz receiver (`36B0:3071`, tested) or USB cable (`36B0:3075`, tested) | Passive `0xBB` battery telemetry every ~5 s on `FF60:0061` (read-only), with charging state |
