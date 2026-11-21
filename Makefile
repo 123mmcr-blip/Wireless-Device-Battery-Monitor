@@ -90,6 +90,8 @@ test: test-update-core test-update-win test-update-signature
 	./build/redragon_evision_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/alienware_driver_test.cpp src/drivers/alienware.cpp -o build/alienware_driver_test.exe
 	./build/alienware_driver_test.exe
+	$(CXX) $(CXXFLAGS) tests/audeze_driver_test.cpp src/drivers/audeze.cpp -o build/audeze_driver_test.exe
+	./build/audeze_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/mchose_modern_driver_test.cpp src/drivers/mchose_modern.cpp -o build/mchose_modern_driver_test.exe
 	./build/mchose_modern_driver_test.exe
 	$(CXX) $(CXXFLAGS) tests/mchose_v9pro_driver_test.cpp src/drivers/mchose_v9pro.cpp -o build/mchose_v9pro_driver_test.exe
