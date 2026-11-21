@@ -149,8 +149,7 @@ DeviceKind KindFromCategory(const std::wstring& c) {
 DeviceKind KindFromBleIds(USHORT vid, USHORT pid) {
     if (vid == 0x3151 && pid == 0x4013) return DeviceKind::Keyboard;
     if (vid == 0x19F5 && pid == 0x324A) return DeviceKind::Keyboard;
-    if (vid == 0x0C45 && pid == 0xFEFE) return DeviceKind::Keyboard;
-    if (vid == 0x0C45 && pid == 0xFEFE) return DeviceKind::Keyboard;
+    if (vid == 0x0C45 && pid == 0xFEFE) return DeviceKind::Keyboard;  // both models above
     return DeviceKind::Other;
 }
 
