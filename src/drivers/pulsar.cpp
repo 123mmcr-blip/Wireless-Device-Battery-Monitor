@@ -14,8 +14,10 @@
 //   "mouse off" if it is still the last answer when we give up.
 //   The vendor collection (FFFF:0001) is on interfaces 2 and 3; interface 2 rejects SET_FEATURE, so
 //   higher interfaces are tried first.
-//   No reliable charging register: on the cable the mouse is charging; 0% from a dongle means the
-//   mouse is off or out of range.
+//   On the cable the mouse is charging; 0% from a dongle means the mouse is off or out of range.
+//   On the 1K dongle 5402 two more reads come from PR #164 (Pulsar Fusion2 captures in pulsar-mouse-linux):
+//   08 83 01 -> packet byte 6 = 1 while the mouse is on its charging cable, and 01 84 04 -> bytes 6..9 =
+//   VID / PID (LE) of the paired mouse, used to name it (3710:3401 Xlite v4, 3710:3409 X3).
 // Feinmann FO1 8K (`3710:5404`, issue #3753) uses the same Sonix feature-report
 // battery query `08 81 01` on interface 3 (FFFF:0001, 65/65/65 bytes).
 // Captured and verified on real hardware in
@@ -95,12 +97,14 @@ bool QueryB4Battery(HidDev& d, const HidColl& c, int& pct, bool& charging, bool 
 enum class Reply { Battery, Offline, None };
 
 // Reads the battery percent into `pct`. Offline = the dongle answered that the mouse is not linked.
-Reply ReadBattery(HidDev& d, int& pct) {
+// Sends one read (category / register / sub) and waits for its echo. On Reply::Battery, `w` holds the
+// 64-byte reply packet (without the report id).
+Reply Query(HidDev& d, BYTE cat, BYTE reg, BYTE sub, std::vector<BYTE>& w) {
     std::vector<BYTE> req(65, 0);  // [0] = report id 0, then the 64-byte packet
     BYTE* p = req.data() + 1;
-    p[1] = 0x08;
-    p[2] = 0x81;
-    p[3] = 0x01;
+    p[1] = cat;
+    p[2] = reg;
+    p[3] = sub;
     unsigned sum = 0;
     for (int i = 0; i < 62; i++) sum += p[i];
     p[62] = (BYTE)(sum & 0xFF);
@@ -112,17 +116,34 @@ Reply ReadBattery(HidDev& d, int& pct) {
             Sleep(50);
             std::vector<BYTE> r;
             if (!d.GetFeature(0x00, r) || r.size() < 65) return Reply::None;
-            const BYTE* w = r.data() + 1;
-            if (w[1] != 0x08 || w[2] != 0x81 || w[3] != 0x01) continue;  // not our reply (yet)
-            if (w[0] == 0x01) {
-                if (w[6] > 100) return Reply::None;  // FF = no reading
-                pct = w[6];
+            if (r[2] != cat || r[3] != reg || r[4] != sub) continue;  // not our reply (yet)
+            if (r[1] == 0x01) {
+                w.assign(r.begin() + 1, r.end());
                 return Reply::Battery;
             }
-            sawOffline = w[0] == 0x05;  // 02 (or 05) = pending: keep polling
+            sawOffline = r[1] == 0x05;  // 02 (or 05) = pending: keep polling
         }
     }
     return sawOffline ? Reply::Offline : Reply::None;
+}
+
+Reply ReadBattery(HidDev& d, int& pct) {
+    std::vector<BYTE> w;
+    Reply rep = Query(d, 0x08, 0x81, 0x01, w);
+    if (rep != Reply::Battery) return rep;
+    if (w[6] > 100) return Reply::None;  // FF = no reading
+    pct = w[6];
+    return Reply::Battery;
+}
+
+// Cabled PIDs the 1K dongle has been seen reporting for the mouse it carries (PR #164, pulsar-mouse-linux).
+const wchar_t* PairedMouseName(USHORT vid, USHORT pid) {
+    if (vid != kVid) return nullptr;
+    switch (pid) {
+        case 0x3401: return L"Pulsar Xlite v4";
+        case 0x3409: return L"Pulsar X3";
+        default: return nullptr;
+    }
 }
 
 }  // namespace
@@ -213,6 +234,13 @@ void PollPulsar(PollContext& ctx) {
                 s.name = prod.name ? prod.name : (generic ? L"Pulsar wireless mouse" : n);
                 s.via = L"2.4 GHz receiver";
                 s.connected = rep == Reply::Battery && pct > 0;
+                if (prod.pid == 0x5402 && s.connected) {
+                    std::vector<BYTE> w;
+                    if (Query(d, 0x08, 0x83, 0x01, w) == Reply::Battery) s.charging = w[6] == 1;
+                    if (Query(d, 0x01, 0x84, 0x04, w) == Reply::Battery)
+                        if (const wchar_t* m = PairedMouseName((USHORT)(w[6] | (w[7] << 8)), (USHORT)(w[8] | (w[9] << 8))))
+                            s.name = m;
+                }
             }
             if (rep == Reply::Battery && (pct > 0 || prod.cable)) s.percent = pct;
             ctx.Add(s, kVid, prod.pid);

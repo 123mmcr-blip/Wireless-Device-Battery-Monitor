@@ -60,9 +60,14 @@ int HidDev::Read(std::vector<BYTE>&, int) { return -1; }
 bool HidDev::SetFeature(const std::vector<BYTE>& q) {
     ++requests;
     assert(q.size() == 65 && q[0] == 0);
-    assert(q[1] == 0x00 && q[2] == 0x08 && q[3] == 0x81 && q[4] == 0x01);
+    // Only the three reads are ever sent: battery 08 81 01, and on the 1K dongle charging 08 83 01 and the
+    // paired mouse 01 84 04 (PR #164).
+    const bool battery = q[2] == 0x08 && q[3] == 0x81 && q[4] == 0x01;
+    const bool charge = q[2] == 0x08 && q[3] == 0x83 && q[4] == 0x01;
+    const bool paired = q[2] == 0x01 && q[3] == 0x84 && q[4] == 0x04;
+    assert(q[1] == 0x00 && (battery || charge || paired));
     for (size_t i = 5; i < 63; ++i) assert(q[i] == 0);
-    assert(q[63] == 0x8A && q[64] == 0);
+    assert(q[63] == (BYTE)(q[2] + q[3] + q[4]) && q[64] == 0);
     return writeOk;
 }
 bool HidDev::GetFeature(BYTE id, std::vector<BYTE>& out) {
@@ -131,6 +136,17 @@ int main() {
     // Other supported Pulsar dongles retain their existing generic naming/selection.
     ctx = Poll(Coll(0x5402, 3), { Answer(0x01, 53) });
     assert(ctx.out.size() == 1 && ctx.out[0].percent == 53 && ctx.out[0].name == L"Pulsar wireless mouse");
+    assert(!ctx.out[0].charging && requests == 3);  // charging and paired-mouse reads went unanswered
+    // 1K dongle: the charging register and the paired mouse's id (an X3, 3710:3409) name and flag it.
+    {
+        auto paired = Answer(0x01, 0x10, 0x01, 0x84, 0x04);
+        paired[8] = 0x37;  // VID 3710 little endian in payload bytes 6..7
+        paired[9] = 0x09;
+        paired[10] = 0x34;  // PID 3409 in payload bytes 8..9
+        ctx = Poll(Coll(0x5402, 3), { Answer(0x01, 41), Answer(0x01, 0x01, 0x08, 0x83, 0x01), paired });
+        assert(ctx.out.size() == 1 && ctx.out[0].percent == 41 && ctx.out[0].charging);
+        assert(ctx.out[0].name == L"Pulsar X3");
+    }
     ctx = Poll(Coll(0x5403, 3), { Answer(0x01, 59) });
     assert(ctx.out.size() == 1 && ctx.out[0].percent == 59 && ctx.out[0].name == L"Pulsar wireless mouse");
 
