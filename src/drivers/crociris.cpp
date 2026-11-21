@@ -43,7 +43,9 @@ bool ReadBattery(const HidColl& c, int& percent, bool& charging, bool& full) {
         if (n < 6 || r[0] != kReplyHeader || r[1] != kGetDeviceStatus) continue;
         const int len = r[2];
         if (len < 2 || n < 4 + len) continue;
-        if (r[4] > 1 || r[5] > 100) continue;  // charging flag or level out of range: not our frame
+        // A mouse that is still working is never at 0%: the receiver answers with 0 while the mouse
+        // sleeps, so treat that as a missing reading and keep the last level instead.
+        if (r[4] > 1 || r[5] == 0 || r[5] > 100) continue;  // charging flag or level not plausible
         charging = r[4] == 1;
         percent = r[5];
         full = len > 2 && r[6] == 1;
