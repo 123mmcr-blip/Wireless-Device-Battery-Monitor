@@ -17,6 +17,7 @@ bool g_stacked;     // icon above the percentage (menu option, PR #525)
 bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
 bool g_makeRoom = true;  // step past other apps' widgets in the taskbar instead of covering them
 widget::VerticalPlace g_place = widget::VerticalPlace::Auto;  // where the column sits on such a taskbar (menu option)
+bool g_farLeft;     // at the left end of the taskbar instead of next to the clock (menu option)
 std::vector<WidgetItem> g_items;
 std::wstring g_tipText;
 RECT g_lastTray{}, g_lastBar{}, g_lastWidgets{};
@@ -147,6 +148,8 @@ struct Span {
     RECT widgets{};          // bounding rectangle of WidgetsButton (screen coords)
     bool hasTasks = false;
     int tasksRight = 0;      // right (bottom) edge of the last task button before the clock (screen x / y)
+    bool hasFirst = false;
+    int firstLeft = 0;       // left edge of the leftmost Start or task button (screen x), for the far-left spot
 };
 
 bool IsVertical(const RECT& r) { return r.bottom - r.top > r.right - r.left; }
@@ -155,6 +158,7 @@ int Lo(const RECT& r, bool vertical) { return vertical ? r.top : r.left; }
 int Hi(const RECT& r, bool vertical) { return vertical ? r.bottom : r.right; }
 std::vector<Span> g_spans;   // guarded by g_wbLock
 bool g_wbMirrors;            // guarded by g_wbLock: measure secondary taskbars too
+bool g_wbFarLeft;            // guarded by g_wbLock: measure the primary taskbar too (far-left spot)
 
 IUIAutomationCondition* StringCondition(IUIAutomation* uia, PROPERTYID prop, const wchar_t* value) {
     VARIANT v;
@@ -213,16 +217,32 @@ Span MeasureSpan(IUIAutomation* uia, HWND bar) {
             for (int i = 0; i < n; i++) {
                 IUIAutomationElement* el = nullptr;
                 RECT r{};
-                if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r) &&
-                    (!s.hasClock || Hi(r, v) <= s.clockLeft) && (!s.hasWidgets || Hi(r, v) <= Lo(s.widgets, v)) &&
-                    (!s.hasTasks || Hi(r, v) > s.tasksRight)) {
-                    s.tasksRight = Hi(r, v);
-                    s.hasTasks = true;
+                if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r)) {
+                    if (!s.hasFirst || r.left < s.firstLeft) {
+                        s.firstLeft = r.left;
+                        s.hasFirst = true;
+                    }
+                    if ((!s.hasClock || Hi(r, v) <= s.clockLeft) && (!s.hasWidgets || Hi(r, v) <= Lo(s.widgets, v)) &&
+                        (!s.hasTasks || Hi(r, v) > s.tasksRight)) {
+                        s.tasksRight = Hi(r, v);
+                        s.hasTasks = true;
+                    }
                 }
                 if (el) el->Release();
             }
         if (all) all->Release();
         task->Release();
+    }
+    if (IUIAutomationCondition* start = StringCondition(uia, UIA_AutomationIdPropertyId, L"StartButton")) {
+        IUIAutomationElement* el = nullptr;
+        RECT r{};
+        if (SUCCEEDED(root->FindFirst(TreeScope_Descendants, start, &el)) && el &&
+            SUCCEEDED(el->get_CurrentBoundingRectangle(&r)) && inBar(r) && (!s.hasFirst || r.left < s.firstLeft)) {
+            s.firstLeft = r.left;
+            s.hasFirst = true;
+        }
+        if (el) el->Release();
+        start->Release();
     }
     root->Release();
     return s;
@@ -332,9 +352,10 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
             }
         }
         AcquireSRWLockShared(&g_wbLock);
-        bool mirrors = g_wbMirrors;
+        bool mirrors = g_wbMirrors, farLeft = g_wbFarLeft;
         ReleaseSRWLockShared(&g_wbLock);
         std::vector<Span> spans;
+        if (bar && farLeft && uia && IsWindow(bar) && IsXamlTaskbar(bar)) spans.push_back(MeasureSpan(uia, bar));
         if (bar && mirrors && uia)
             for (HWND t = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); t;
                  t = FindWindowExW(nullptr, t, L"Shell_SecondaryTrayWnd", nullptr))
@@ -374,6 +395,25 @@ RECT WidgetsButtonRect() {
     RECT r = g_wbRectBar && g_wbRectBar == g_wbTaskbar ? g_wbRect : RECT{};
     ReleaseSRWLockShared(&g_wbLock);
     return r;
+}
+
+// Screen x for a strip `width` wide at the left end of a Windows 11 taskbar, right of the Widgets button
+// when that sits there (centred taskbar). False while the taskbar is not measured yet, or when the Start or
+// task buttons reach into the spot (left-aligned taskbar, many open windows): the strip then stays next to
+// the clock rather than cover a button.
+bool FarLeftX(HWND bar, int width, int& x) {
+    RECT br{};
+    if (width <= 0 || !GetWindowRect(bar, &br)) return false;
+    bool ok = false;
+    AcquireSRWLockShared(&g_wbLock);
+    for (const auto& s : g_spans)
+        if (s.bar == bar && s.measured && s.hasFirst) {
+            x = br.left + Px(4);
+            if (s.hasWidgets && s.widgets.left < x + width + Px(4) && s.widgets.right > x) x = s.widgets.right + Px(4);
+            ok = x + width + Px(4) <= s.firstLeft;
+        }
+    ReleaseSRWLockShared(&g_wbLock);
+    return ok;
 }
 
 void ApplyTipTheme() {
@@ -852,9 +892,11 @@ void PositionMirror(Mirror& m) {
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\WirelessBattery", L"SecondaryTaskbarOffset", RRF_RT_REG_DWORD, nullptr, &offset, &sz) ==
         ERROR_SUCCESS)
         right -= Px((int)offset);
-    int left = right - length - Px(2);
+    int left = right - length - Px(2), farX = 0;
+    bool atFarLeft = !v && g_farLeft && FarLeftX(m.bar, m.size.cx, farX);  // horizontal bars only
+    if (atFarLeft) left = farX;
     g_dpiBar = nullptr;
-    if (!known || length <= 0 || left < minLeft) { HideMirror(m); return; }
+    if (!atFarLeft && (!known || length <= 0 || left < minLeft)) { HideMirror(m); return; }
     POINT p = v ? POINT{ bar.left, left } : POINT{ left, bar.top };
     ScreenToClient(m.bar, &p);
     int along = v ? p.y : p.x;
@@ -1178,6 +1220,15 @@ void SetVerticalPlace(VerticalPlace place) {
 
 bool Vertical() { return g_wnd && g_vertical; }
 
+void SetFarLeft(bool on) {
+    g_farLeft = on;
+    AcquireSRWLockExclusive(&g_wbLock);
+    g_wbFarLeft = on;
+    ReleaseSRWLockExclusive(&g_wbLock);
+    if (on && g_wbWake) SetEvent(g_wbWake);  // measure the taskbar now, not in 5 s
+    if (g_wnd) Reposition();
+}
+
 void SetMonitorChoice(const std::wstring& choice) {
     g_choice = choice.empty() ? L"all" : choice;
     SyncMirrors();  // adds, removes or hides strips right away
@@ -1375,8 +1426,16 @@ bool Reposition() {
         left = g_lastLeft;
     }
 
+    int farX = 0;
+    bool atFarLeft = !rtl && g_farLeft && FarLeftX(g_taskbar, g_size.cx, farX);
+    if (atFarLeft) {
+        POINT fp{ farX, bar.top };
+        ScreenToClient(g_taskbar, &fp);
+        left = fp.x;
+    }
+
     // Windows 10: Explorer re-expands the task buttons on its own layout passes; narrow them again.
-    if (g_rebar && IsWindow(g_rebar)) {
+    if (!atFarLeft && g_rebar && IsWindow(g_rebar)) {
         RECT rr;
         GetWindowRect(g_rebar, &rr);
         POINT tl{ rtl ? rr.right : rr.left, rr.top };

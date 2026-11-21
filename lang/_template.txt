@@ -96,6 +96,7 @@ Automatic (keeps clear of app icons) =
 Top of the taskbar = 
 Above the notification area = 
 Bottom of the taskbar (moves the taskbar icons up, Windows 11) = 
+At the left end of the taskbar = 
 All monitors = 
 Main monitor only = 
 {monitor} only = 

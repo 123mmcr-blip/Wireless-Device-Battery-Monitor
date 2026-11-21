@@ -58,9 +58,9 @@ constexpr UINT ALERT_ICON_ID = 2;
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
-    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM,
-    ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
+    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT,
     ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
+    ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_LIMIT_OFF = 600, ID_LIMIT_FIRST,  // "Notify when charged to": off, then alerts::kChargeLimits
     ID_UPDATE = 200, ID_AUTO_UPDATE,
@@ -101,6 +101,7 @@ bool g_makeRoom = true;      // step past other apps' taskbar widgets (menu opti
 // the TaskbarOffset value the widget has always read, so a value set by hand keeps working.
 const int POSITION_OFFSETS[] = { 0, 40, 80, 120, 160, 200 };
 widget::VerticalPlace g_verticalPlace = widget::VerticalPlace::Auto;  // column position on a left / right taskbar
+bool g_farLeft = false;      // widget at the left end of the taskbar instead of next to the clock (menu option)
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
 std::atomic<DWORD> g_pollIntervalMs{ 60 * 1000 };  // set from the menu, read by the worker thread
 
@@ -421,6 +422,8 @@ void SaveVerticalPlace(widget::VerticalPlace p) {
               : p == widget::VerticalPlace::Bottom ? 3 : 0;
     RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", REG_DWORD, &v, sizeof(v));
 }
+bool LoadFarLeft() { return LoadBoolSetting(L"WidgetFarLeft", false); }
+void SaveFarLeft(bool on) { SaveBoolSetting(L"WidgetFarLeft", on); }
 bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
 void SaveBrandColors(bool on) { SaveBoolSetting(L"BrandColors", on); }
 DWORD LoadPollSeconds() {
@@ -953,6 +956,12 @@ void SetWidgetPlace(widget::VerticalPlace p) {
     widget::SetVerticalPlace(p);
 }
 
+void SetFarLeft(bool on) {
+    g_farLeft = on;
+    SaveFarLeft(on);
+    widget::SetFarLeft(on);
+}
+
 void SetBrandColors(bool on) {
     g_brandColors = on;
     SaveBrandColors(on);
@@ -1153,6 +1162,7 @@ void ShowMenu() {
                            MF_BYCOMMAND);
         AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Position on a vertical taskbar"));
     }
+    AppendMenuW(m, MF_STRING | (g_farLeft ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_FAR_LEFT, T(L"At the left end of the taskbar"));
     // With more than one monitor: choose which taskbars show the widget (all, main only, or one monitor).
     auto monitors = widget::OtherMonitors();
     if (monitors.size() > 31) monitors.resize(31);
@@ -1270,6 +1280,7 @@ void ShowMenu() {
         case ID_PLACE_TOP: SetWidgetPlace(widget::VerticalPlace::Top); break;
         case ID_PLACE_TRAY: SetWidgetPlace(widget::VerticalPlace::AboveTray); break;
         case ID_PLACE_BOTTOM: SetWidgetPlace(widget::VerticalPlace::Bottom); break;
+        case ID_FAR_LEFT: SetFarLeft(!g_farLeft); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
@@ -1757,10 +1768,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     g_stacked = LoadStacked();
     g_makeRoom = LoadMakeRoom();
     widget::SetMakeRoom(g_makeRoom);
+    g_farLeft = LoadFarLeft();
     g_pollIntervalMs = LoadPollSeconds() * 1000;
     widget::SetStacked(g_stacked);
     g_verticalPlace = LoadVerticalPlace();
     widget::SetVerticalPlace(g_verticalPlace);
+    widget::SetFarLeft(g_farLeft);
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
     i18n::Init();
     g_widgetMonitor = LoadWidgetMonitor();
