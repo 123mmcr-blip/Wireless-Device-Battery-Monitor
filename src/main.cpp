@@ -58,7 +58,7 @@ constexpr UINT ALERT_ICON_ID = 2;
 enum MenuId : UINT {
     ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_SUPPORT, ID_REPORT,
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
-    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT, ID_PERCENT_SIGN, ID_RING_STYLE, ID_BEFORE_APPS,
+    ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM, ID_FAR_LEFT, ID_PERCENT_SIGN, ID_RING_STYLE, ID_BEFORE_APPS, ID_CONNECTION_ICONS,
     ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
     ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
@@ -98,6 +98,7 @@ bool g_widgetBackground = false;  // draw a plate behind the taskbar text (trans
 bool g_stacked = false;      // icon above the percentage (menu option)
 bool g_showPercentSign = true;  // include '%' in taskbar battery labels (menu option)
 bool g_ringStyle = false;  // device icon inside a battery ring (menu option, PR #110)
+bool g_connectionIcons = false;  // wireless mark for 2.4 GHz devices (menu option, PR #2277)
 bool g_makeRoom = true;      // step past other apps' taskbar widgets (menu option)
 // "Position on the taskbar": distance from the notification area in DPI-independent pixels. Stored as
 // the TaskbarOffset value the widget has always read, so a value set by hand keeps working.
@@ -418,6 +419,8 @@ bool LoadShowPercentSign() { return LoadBoolSetting(L"ShowPercentSign", true); }
 void SaveShowPercentSign(bool on) { SaveBoolSetting(L"ShowPercentSign", on); }
 bool LoadRingStyle() { return LoadBoolSetting(L"RingStyle", false); }
 void SaveRingStyle(bool on) { SaveBoolSetting(L"RingStyle", on); }
+bool LoadConnectionIcons() { return LoadBoolSetting(L"ConnectionIcons", false); }
+void SaveConnectionIcons(bool on) { SaveBoolSetting(L"ConnectionIcons", on); }
 widget::VerticalPlace LoadVerticalPlace() {
     DWORD v = 0, sz = sizeof(v);
     RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", RRF_RT_REG_DWORD, nullptr, &v, &sz);
@@ -769,6 +772,7 @@ void UpdateWidget() {
         it.dim = ShouldDim(e->st);
         it.low = !offline && !it.charging && it.percent >= 0 && it.percent <= LOW_BATTERY;
         it.bluetooth = e->st.via == L"Bluetooth";
+        it.wirelessLink = !offline && e->st.via.rfind(L"2.4 GHz", 0) == 0;
         it.label = labels[items.size()];
         it.accent = AccentFor(e->st);
         items.push_back(it);
@@ -976,6 +980,12 @@ void SetLanguage(const std::wstring& code) {
     i18n::SetChoice(code);
     RedrawAll();  // tray tooltips and the placeholder text
     UpdateWidget();
+}
+
+void SetConnectionIcons(bool on) {
+    g_connectionIcons = on;
+    SaveConnectionIcons(on);
+    widget::SetConnectionIcons(on);
 }
 
 void SetRingStyle(bool on) {
@@ -1191,6 +1201,8 @@ void ShowMenu() {
                 T(L"Show percent sign (%)"));
     AppendMenuW(m, MF_STRING | (g_ringStyle ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_RING_STYLE,
                 T(L"Ring style (icon inside a battery ring)"));
+    AppendMenuW(m, MF_STRING | (g_connectionIcons ? MF_CHECKED : 0) | (g_wantWidget ? 0 : MF_GRAYED), ID_CONNECTION_ICONS,
+                T(L"Mark devices on a 2.4 GHz receiver"));
     {
         HMENU sub = CreatePopupMenu();
         UINT f = MF_STRING | (g_wantWidget ? 0 : MF_GRAYED);
@@ -1354,6 +1366,7 @@ void ShowMenu() {
         case ID_STACKED: SetStacked(!g_stacked); break;
         case ID_PERCENT_SIGN: SetShowPercentSign(!g_showPercentSign); break;
         case ID_RING_STYLE: SetRingStyle(!g_ringStyle); break;
+        case ID_CONNECTION_ICONS: SetConnectionIcons(!g_connectionIcons); break;
         case ID_MAKE_ROOM: SetMakeRoom(!g_makeRoom); break;
         case ID_PLACE_AUTO: SetWidgetPlace(widget::VerticalPlace::Auto); break;
         case ID_PLACE_TOP: SetWidgetPlace(widget::VerticalPlace::Top); break;
@@ -1862,6 +1875,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     widget::SetShowPercentSign(g_showPercentSign);
     g_ringStyle = LoadRingStyle();
     widget::SetRingStyle(g_ringStyle);
+    g_connectionIcons = LoadConnectionIcons();
+    widget::SetConnectionIcons(g_connectionIcons);
     g_verticalPlace = LoadVerticalPlace();
     widget::SetVerticalPlace(g_verticalPlace);
     widget::SetFarLeft(g_farLeft);

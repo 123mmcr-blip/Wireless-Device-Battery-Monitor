@@ -17,6 +17,7 @@ bool g_background;  // opaque rounded plate behind the text, for transparent / r
 bool g_stacked;     // icon above the percentage (menu option, PR #525)
 bool g_showPercentSign = true;  // '%' after numeric levels (menu option, PR #1386)
 bool g_ringStyle;   // device icon inside a ring that fills with the charge (menu option, PR #110)
+bool g_connectionIcons;  // wireless mark after 2.4 GHz devices' levels (menu option, PR #2277)
 bool g_vertical;    // the primary taskbar is docked left or right: one block per device, stacked (PR #321)
 bool g_makeRoom = true;  // step past other apps' widgets in the taskbar instead of covering them
 widget::VerticalPlace g_place = widget::VerticalPlace::Auto;  // where the column sits on such a taskbar (menu option)
@@ -461,6 +462,7 @@ wchar_t Glyph(DeviceKind k, bool bluetooth) {
 }
 constexpr wchar_t kBolt = 0xE945;            // LightningBolt
 constexpr wchar_t kCheck = 0xE73E;           // CheckMark, in place of the bolt once fully charged
+constexpr wchar_t kWifi = 0xE701;            // Wifi: device on a 2.4 GHz receiver (PR #2277)
 constexpr wchar_t kBatteryUnknown = 0xE996;  // shown when there is nothing to display
 
 // Creates a font, falling back when the preferred face is not installed (GDI would silently substitute).
@@ -668,8 +670,9 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
         }
         Rgb tc = it.low ? red : fg;
         bool mark = it.charging || it.full;  // bolt while charging, green check mark once full
+        bool link = !mark && g_connectionIcons && it.wirelessLink;  // wireless mark otherwise (opt-in)
         size_t glyph = out.size();
-        slots.push_back({ (int)glyph, (int)glyph + 1, mark ? (int)glyph + 2 : -1 });
+        slots.push_back({ (int)glyph, (int)glyph + 1, mark || link ? (int)glyph + 2 : -1 });
         bool branded = it.accent != Accent::None;
         BrandColor bc = AccentColor(it.accent, g_light);
         Rgb accent{ bc.r, bc.g, bc.b };
@@ -681,13 +684,14 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
         }
         out.push_back(std::move(icon));
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + (g_showPercentSign ? L"%" : L"") : L"?";
-        Piece label{ RenderMask(t, text, g_light), tc, a, mark ? Px(2) : 0 };
+        Piece label{ RenderMask(t, text, g_light), tc, a, mark || link ? Px(2) : 0 };
         if (branded && it.percent >= 0) {
             label.barPct = it.percent;
             label.barColor = it.low ? red : accent;
         }
         out.push_back(std::move(label));
         if (mark) out.push_back({ RenderMask(std::wstring(1, it.full ? kCheck : kBolt), bolt, g_light), it.full ? full : charge, a, 0 });
+        else if (link) out.push_back({ RenderMask(std::wstring(1, kWifi), bolt, g_light), fg, a * 160 / 255, 0 });
         out.back().gapAfter = i + 1 < g_items.size() ? Px(14) : 0;
         if (!it.label.empty()) {  // tiny caption in the bottom-right corner of the icon
             Piece c{ RenderMask(it.label, caption, g_light), fg, a, 0 };
@@ -1268,6 +1272,12 @@ void SetLightTheme(bool light) {
 void SetBackground(bool on) {
     g_background = on;
     PaintAll();
+}
+
+void SetConnectionIcons(bool on) {
+    g_connectionIcons = on;
+    PaintAll();
+    if (g_wnd) Reposition();
 }
 
 void SetRingStyle(bool on) {

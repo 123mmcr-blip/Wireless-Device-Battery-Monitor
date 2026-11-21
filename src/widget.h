@@ -17,6 +17,7 @@ struct WidgetItem {
     bool dim      = false;  // asleep / stale value
     bool low      = false;
     bool bluetooth = false;  // picks the Bluetooth icon when the device type is unknown
+    bool wirelessLink = false;  // on a 2.4 GHz receiver: small wireless mark after the level (opt-in, PR #2277)
     std::wstring label;      // tiny caption on the icon; set only when two devices of one kind are shown
     Accent accent  = Accent::None;  // brand color for the icon, its glow and the level bar
 };
@@ -38,6 +39,8 @@ void SetStacked(bool on);
 void SetShowPercentSign(bool on);
 // Device icon inside a ring that fills with the charge, instead of icon + percentage (kept across Create/Destroy).
 void SetRingStyle(bool on);
+// Small wireless mark after the level of devices on a 2.4 GHz receiver (kept across Create/Destroy).
+void SetConnectionIcons(bool on);
 // Steps past other apps' widgets in the taskbar (e.g. a network graph or a countdown) that sit where the
 // strip would go, so both stay readable (kept across Create/Destroy).
 void SetMakeRoom(bool on);
