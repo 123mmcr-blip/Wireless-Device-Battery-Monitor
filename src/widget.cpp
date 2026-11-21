@@ -414,6 +414,15 @@ bool FarLeftX(HWND bar, int width, int& x) {
             x = br.left + Px(4);
             if (s.hasWidgets && s.widgets.left < x + width + Px(4) && s.widgets.right > x) x = s.widgets.right + Px(4);
             ok = x + width + Px(4) <= s.firstLeft;
+            if (!ok && s.hasTasks) {
+                // No room before Start (left-aligned taskbar, from PR #2519): take the first free spot from the
+                // left instead, right after the task buttons, as long as it stays clear of the Widgets button
+                // and the clock. Only when that does not fit either does the strip go back next to the clock.
+                x = s.tasksRight + Px(4);
+                int limit = s.hasClock ? s.clockLeft : (int)br.right;
+                if (s.hasWidgets && s.widgets.left >= x) limit = std::min(limit, (int)s.widgets.left);
+                ok = x + width + Px(4) <= limit;
+            }
         }
     ReleaseSRWLockShared(&g_wbLock);
     return ok;
