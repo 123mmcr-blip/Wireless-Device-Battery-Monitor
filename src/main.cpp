@@ -1206,6 +1206,7 @@ void ShowMenu() {
     i18n::Init();  // picks up language files added since the last time
     auto languages = i18n::Available();
     if (languages.size() > 64) languages.resize(64);
+    HBITMAP russianFlag = LoadBitmapW(g_inst, L"FLAG_RU");  // PR #1754
     {
         HMENU sub = CreatePopupMenu();
         AppendMenuW(sub, MF_STRING, ID_LANG_AUTO, T(L"Automatic (Windows language)"));
@@ -1213,6 +1214,12 @@ void ShowMenu() {
         UINT checked = ID_LANG_AUTO;
         for (UINT i = 0; i < languages.size(); i++) {
             AppendMenuW(sub, MF_STRING, ID_LANG_FIRST + i, languages[i].name.c_str());
+            if (russianFlag && _wcsicmp(languages[i].code.c_str(), L"ru") == 0) {
+                MENUITEMINFOW item{ sizeof(item) };
+                item.fMask = MIIM_BITMAP;
+                item.hbmpItem = russianFlag;
+                SetMenuItemInfoW(sub, ID_LANG_FIRST + i, FALSE, &item);
+            }
             if (!i18n::Choice().empty() && _wcsicmp(languages[i].code.c_str(), i18n::Choice().c_str()) == 0) checked = ID_LANG_FIRST + i;
         }
         CheckMenuRadioItem(sub, ID_LANG_AUTO, ID_LANG_FIRST + 63, checked, MF_BYCOMMAND);
@@ -1270,6 +1277,7 @@ void ShowMenu() {
                                 pt.x, pt.y, g_hwnd, fromTaskbar ? &tpm : nullptr);
     PostMessageW(g_hwnd, WM_NULL, 0, 0);
     DestroyMenu(m);
+    if (russianFlag) DeleteObject(russianFlag);
     memory_trim::Soon();
     switch (cmd) {
         case ID_REFRESH: SetEvent(g_refreshEvt); break;
