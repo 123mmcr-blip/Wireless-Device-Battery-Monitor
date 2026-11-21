@@ -60,6 +60,7 @@ enum MenuId : UINT {
     ID_BRAND_COLORS, ID_STACKED, ID_SHOW_DISCONNECTED, ID_RECORD_HISTORY, ID_DIM_SLEEPING,
     ID_TRAY_WHEN_EMPTY, ID_MAKE_ROOM,
     ID_POSITION_FIRST = 700,  // "Position on the taskbar": ID_POSITION_FIRST + 0..5, then the custom value
+    ID_PLACE_AUTO, ID_PLACE_TOP, ID_PLACE_TRAY, ID_PLACE_BOTTOM,  // "Position on a vertical taskbar"
     ID_POLL_FIRST = 500,  // "Check battery every": ID_POLL_FIRST + 0..7
     ID_LIMIT_OFF = 600, ID_LIMIT_FIRST,  // "Notify when charged to": off, then alerts::kChargeLimits
     ID_UPDATE = 200, ID_AUTO_UPDATE,
@@ -99,6 +100,7 @@ bool g_makeRoom = true;      // step past other apps' taskbar widgets (menu opti
 // "Position on the taskbar": distance from the notification area in DPI-independent pixels. Stored as
 // the TaskbarOffset value the widget has always read, so a value set by hand keeps working.
 const int POSITION_OFFSETS[] = { 0, 40, 80, 120, 160, 200 };
+widget::VerticalPlace g_verticalPlace = widget::VerticalPlace::Auto;  // column position on a left / right taskbar
 bool g_brandColors = false;  // off by default; known brands get their color (Razer green, Logitech blue, ...)
 std::atomic<DWORD> g_pollIntervalMs{ 60 * 1000 };  // set from the menu, read by the worker thread
 
@@ -408,6 +410,17 @@ void SetWidgetMonitor(const std::wstring& v) {
 }
 bool LoadStacked() { return LoadBoolSetting(L"StackedLayout", false); }
 void SaveStacked(bool on) { SaveBoolSetting(L"StackedLayout", on); }
+widget::VerticalPlace LoadVerticalPlace() {
+    DWORD v = 0, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return v == 1 ? widget::VerticalPlace::Top : v == 2 ? widget::VerticalPlace::AboveTray
+         : v == 3 ? widget::VerticalPlace::Bottom : widget::VerticalPlace::Auto;
+}
+void SaveVerticalPlace(widget::VerticalPlace p) {
+    DWORD v = p == widget::VerticalPlace::Top ? 1 : p == widget::VerticalPlace::AboveTray ? 2
+              : p == widget::VerticalPlace::Bottom ? 3 : 0;
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"VerticalPlace", REG_DWORD, &v, sizeof(v));
+}
 bool LoadBrandColors() { return LoadBoolSetting(L"BrandColors", false); }
 void SaveBrandColors(bool on) { SaveBoolSetting(L"BrandColors", on); }
 DWORD LoadPollSeconds() {
@@ -934,6 +947,12 @@ void SetTaskbarOffset(int px) {
     if (g_useWidget) widget::Reposition();
 }
 
+void SetWidgetPlace(widget::VerticalPlace p) {
+    g_verticalPlace = p;
+    SaveVerticalPlace(p);
+    widget::SetVerticalPlace(p);
+}
+
 void SetBrandColors(bool on) {
     g_brandColors = on;
     SaveBrandColors(on);
@@ -1119,6 +1138,21 @@ void ShowMenu() {
         AppendMenuW(sub, f | (g_makeRoom ? MF_CHECKED : 0), ID_MAKE_ROOM, T(L"Make room for other taskbar widgets"));
         AppendMenuW(m, MF_POPUP | (g_wantWidget ? 0 : MF_GRAYED), (UINT_PTR)sub, T(L"Position on the taskbar"));
     }
+    // Left / right taskbar: choose where the column sits.
+    if (widget::Vertical()) {
+        HMENU sub = CreatePopupMenu();
+        AppendMenuW(sub, MF_STRING, ID_PLACE_AUTO, T(L"Automatic (keeps clear of app icons)"));
+        AppendMenuW(sub, MF_STRING, ID_PLACE_TOP, T(L"Top of the taskbar"));
+        AppendMenuW(sub, MF_STRING, ID_PLACE_TRAY, T(L"Above the notification area"));
+        AppendMenuW(sub, MF_STRING, ID_PLACE_BOTTOM,
+                    T(L"Bottom of the taskbar (moves the taskbar icons up, Windows 11)"));
+        CheckMenuRadioItem(sub, ID_PLACE_AUTO, ID_PLACE_BOTTOM,
+                           g_verticalPlace == widget::VerticalPlace::Top ? ID_PLACE_TOP
+                           : g_verticalPlace == widget::VerticalPlace::AboveTray ? ID_PLACE_TRAY
+                           : g_verticalPlace == widget::VerticalPlace::Bottom ? ID_PLACE_BOTTOM : ID_PLACE_AUTO,
+                           MF_BYCOMMAND);
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, T(L"Position on a vertical taskbar"));
+    }
     // With more than one monitor: choose which taskbars show the widget (all, main only, or one monitor).
     auto monitors = widget::OtherMonitors();
     if (monitors.size() > 31) monitors.resize(31);
@@ -1232,6 +1266,10 @@ void ShowMenu() {
         case ID_BRAND_COLORS: SetBrandColors(!g_brandColors); break;
         case ID_STACKED: SetStacked(!g_stacked); break;
         case ID_MAKE_ROOM: SetMakeRoom(!g_makeRoom); break;
+        case ID_PLACE_AUTO: SetWidgetPlace(widget::VerticalPlace::Auto); break;
+        case ID_PLACE_TOP: SetWidgetPlace(widget::VerticalPlace::Top); break;
+        case ID_PLACE_TRAY: SetWidgetPlace(widget::VerticalPlace::AboveTray); break;
+        case ID_PLACE_BOTTOM: SetWidgetPlace(widget::VerticalPlace::Bottom); break;
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_SUPPORT: ShellExecuteW(nullptr, L"open", L"https://github.com/sponsors/krisgfx9", nullptr, nullptr, SW_SHOWNORMAL); break;
@@ -1721,6 +1759,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     widget::SetMakeRoom(g_makeRoom);
     g_pollIntervalMs = LoadPollSeconds() * 1000;
     widget::SetStacked(g_stacked);
+    g_verticalPlace = LoadVerticalPlace();
+    widget::SetVerticalPlace(g_verticalPlace);
     widget::SetBackground(g_widgetBackground);  // remembered by the widget across re-creation
     i18n::Init();
     g_widgetMonitor = LoadWidgetMonitor();
