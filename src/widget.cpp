@@ -155,13 +155,73 @@ bool IsXamlTaskbar(HWND bar) {
     return FindWindowExW(bar, nullptr, L"Windows.UI.Composition.DesktopWindowContentBridge", nullptr) != nullptr;
 }
 
+// A left / right Windows 11 taskbar: the screen-y range its XAML buttons (Start, search, task buttons)
+// take above the notification area. The task list is centred and grows towards the tray, and being XAML
+// it cannot be shortened like Windows 10's ReBarWindow32, so the column has to step out of its way.
+struct Column {
+    HWND bar = nullptr;
+    bool measured = false;  // UI Automation answered for this taskbar
+    bool any = false;       // at least one button found
+    int top = 0, bottom = 0;
+};
+Column g_column;  // guarded by g_wbLock
+
+bool IsVerticalBar(HWND bar) {
+    RECT r{};
+    return GetWindowRect(bar, &r) && r.bottom - r.top > r.right - r.left;
+}
+
+Column MeasureColumn(IUIAutomation* uia, HWND bar) {
+    Column c;
+    c.bar = bar;
+    RECT br{}, tr{};
+    HWND tray = FindWindowExW(bar, nullptr, L"TrayNotifyWnd", nullptr);
+    IUIAutomationElement* root = nullptr;
+    if (!tray || !GetWindowRect(tray, &tr) || !GetWindowRect(bar, &br) || FAILED(uia->ElementFromHandle(bar, &root)) || !root)
+        return c;
+    // XAML elements have no window of their own; this leaves out our strip and the taskbar's legacy
+    // child windows (ReBarWindow32 and friends still exist on Windows 11, with stale rectangles).
+    VARIANT none;
+    VariantInit(&none);
+    none.vt = VT_I4;
+    none.lVal = 0;
+    IUIAutomationCondition* xaml = nullptr;
+    IUIAutomationCacheRequest* req = nullptr;
+    IUIAutomationElementArray* all = nullptr;
+    int n = 0;
+    // One cross-process call for all rectangles.
+    if (SUCCEEDED(uia->CreatePropertyCondition(UIA_NativeWindowHandlePropertyId, none, &xaml)) && xaml &&
+        SUCCEEDED(uia->CreateCacheRequest(&req)) && req && SUCCEEDED(req->AddProperty(UIA_BoundingRectanglePropertyId)) &&
+        SUCCEEDED(root->FindAllBuildCache(TreeScope_Descendants, xaml, req, &all)) && all && SUCCEEDED(all->get_Length(&n))) {
+        c.measured = true;
+        for (int i = 0; i < n; i++) {
+            IUIAutomationElement* el = nullptr;
+            RECT r{};
+            // Elements reaching below the tray's top are the tray icons and the frame around everything.
+            if (SUCCEEDED(all->GetElement(i, &el)) && el && SUCCEEDED(el->get_CachedBoundingRectangle(&r)) && r.bottom > r.top &&
+                r.right > r.left && r.left >= br.left && r.right <= br.right && r.top >= br.top && r.bottom <= tr.top) {
+                c.top = c.any ? std::min(c.top, (int)r.top) : (int)r.top;
+                c.bottom = c.any ? std::max(c.bottom, (int)r.bottom) : (int)r.bottom;
+                c.any = true;
+            }
+            if (el) el->Release();
+        }
+    }
+    if (all) all->Release();
+    if (req) req->Release();
+    if (xaml) xaml->Release();
+    root->Release();
+    return c;
+}
+
 DWORD WINAPI WidgetsButtonThread(LPVOID) {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IUIAutomation* uia = nullptr;
     IUIAutomationElement* btn = nullptr;
     HWND btnBar = nullptr;
+    bool column = false;  // vertical XAML taskbar: its task buttons come and go, so look more often
     for (;;) {
-        WaitForSingleObject(g_wbWake, btnBar ? 5000 : INFINITE);  // no widget (tray-icon mode): sleep until one
+        WaitForSingleObject(g_wbWake, btnBar ? (column ? 1500 : 5000) : INFINITE);  // no widget (tray-icon mode): sleep until one
         AcquireSRWLockShared(&g_wbLock);
         HWND bar = g_wbTaskbar;
         ReleaseSRWLockShared(&g_wbLock);
@@ -199,7 +259,11 @@ DWORD WINAPI WidgetsButtonThread(LPVOID) {
             for (HWND t = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); t;
                  t = FindWindowExW(nullptr, t, L"Shell_SecondaryTrayWnd", nullptr))
                 if (IsXamlTaskbar(t)) spans.push_back(MeasureSpan(uia, t));  // Windows 10 bars have real child windows
+        Column col;
+        column = bar && uia && IsWindow(bar) && IsVerticalBar(bar) && IsXamlTaskbar(bar);
+        if (column) col = MeasureColumn(uia, bar);
         AcquireSRWLockExclusive(&g_wbLock);
+        g_column = col;
         if (bar && g_wbTaskbar == bar) {  // drop a result for a taskbar we no longer sit on
             g_wbRect = r;
             g_wbRectBar = bar;
@@ -995,6 +1059,17 @@ bool Reposition() {
                          &osz) == ERROR_SUCCESS)
             top -= Px((int)offset);
         top = std::clamp(top, 0, (int)std::max<LONG>(0, client.bottom - g_size.cy));
+        // Windows 11: the centred task list grows down to the tray and would end up under the column.
+        // When that happens, move to the free end of the bar above the first button, if the column fits.
+        AcquireSRWLockShared(&g_wbLock);
+        Column col = g_column;
+        ReleaseSRWLockShared(&g_wbLock);
+        if (!g_rebar && col.bar == g_taskbar && col.measured && col.any) {
+            POINT first{ bar.left, col.top }, last{ bar.left, col.bottom };
+            ScreenToClient(g_taskbar, &first);
+            ScreenToClient(g_taskbar, &last);
+            if (last.y > top && first.y < top + g_size.cy && g_size.cy + Px(2) <= first.y) top = 0;
+        }
         int left = (int)std::max<LONG>(0, (client.right - g_size.cx) / 2);
         // Windows 10: shorten the task-button area when it would reach behind the column.
         if (g_rebar && IsWindow(g_rebar)) {
